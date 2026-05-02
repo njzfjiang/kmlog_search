@@ -100,7 +100,7 @@ def _search_messages_single(query: str, limit: int = 10):
                     ELSE 'content'
                 END AS match_type
             FROM messages
-            LEFT JOIN fts_hits ON fts_hits.rowid = messages.id
+            LEFT JOIN fts_hits ON fts_hits.rowid = messages.rowid
             WHERE fts_hits.rowid IS NOT NULL
                OR messages.content LIKE ?
                OR messages.conversation_title LIKE ?
