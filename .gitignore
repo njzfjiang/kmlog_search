@@ -1,0 +1,17 @@
+.env
+servers/.env
+__pycache__/
+*.py[cod]
+
+# Local/generated data
+chat_data/*.db
+chat_data/*.db-*
+chat_data/*.sql
+chat_data/*.json
+chat_data/*.jsonl
+
+# Raw ChatGPT export; large and private.
+chatGPT-*/
+
+# Keep examples/docs.
+!.env.example
