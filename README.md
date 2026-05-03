@@ -51,8 +51,10 @@ Useful environment variables:
 
 ```text
 GET  /healthz
+GET  /wish
 POST /search
 POST /search_by_date
+POST /wish
 POST /ensure_indexes
 ```
 
@@ -66,6 +68,31 @@ POST /ensure_indexes
   "kinds": ["chat"],
   "after": "2026-01-01",
   "before": "2026-05-01"
+}
+```
+
+`GET /wish` query parameters:
+
+```text
+owner=Mei|Kai|Shared
+scope=care|work|romance|play|misc
+status=open|done|stale|archived
+limit=50
+```
+
+All filters are optional.
+
+`POST /wish` request:
+
+```json
+{
+  "owner": "Mei",
+  "scope": "care",
+  "text": "short wish text",
+  "status": "open",
+  "priority": 3,
+  "tags": "foo,bar",
+  "source": "manual"
 }
 ```
 

@@ -2,6 +2,7 @@ import os
 import re
 import sqlite3
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -31,8 +32,118 @@ def ensure_search_indexes():
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_role_idx ON messages(role)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_kind_idx ON messages(kind)")
+        ensure_wishes_table(cursor)
         conn.commit()
         print("SQLite search indexes are ready")
+    finally:
+        conn.close()
+
+
+def ensure_wishes_table(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wishes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          created_at TEXT NOT NULL,
+          owner TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          text TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'open',
+          priority INTEGER DEFAULT 3,
+          tags TEXT DEFAULT '',
+          source TEXT DEFAULT 'manual'
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wishes_created_at ON wishes(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wishes_status ON wishes(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wishes_scope ON wishes(scope)")
+
+
+def ensure_wish_indexes():
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_wishes_table(cursor)
+        conn.commit()
+        print("SQLite wishes table is ready")
+    finally:
+        conn.close()
+
+
+def _wish_row_to_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "created_at": row["created_at"],
+        "owner": row["owner"],
+        "scope": row["scope"],
+        "text": row["text"],
+        "status": row["status"],
+        "priority": row["priority"],
+        "tags": row["tags"] or "",
+        "source": row["source"],
+    }
+
+
+def create_wish(
+    owner: str,
+    scope: str,
+    text: str,
+    status: str = "open",
+    priority: int = 3,
+    tags: str = "",
+    source: str = "manual",
+    created_at: str | None = None,
+) -> dict:
+    created_at = created_at or datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_wishes_table(cursor)
+        cursor.execute("""
+            INSERT INTO wishes (created_at, owner, scope, text, status, priority, tags, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (created_at, owner, scope, text, status, priority, tags or "", source))
+        wish_id = cursor.lastrowid
+        conn.commit()
+
+        row = cursor.execute("SELECT * FROM wishes WHERE id = ?", (wish_id,)).fetchone()
+        return _wish_row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def list_wishes(
+    owner: str | None = None,
+    scope: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_wishes_table(cursor)
+
+        clauses = []
+        params = []
+        if owner:
+            clauses.append("owner = ?")
+            params.append(owner)
+        if scope:
+            clauses.append("scope = ?")
+            params.append(scope)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = cursor.execute(f"""
+            SELECT *
+            FROM wishes
+            {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+        """, params).fetchall()
+        return [_wish_row_to_dict(row) for row in rows]
     finally:
         conn.close()
 

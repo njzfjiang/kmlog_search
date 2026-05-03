@@ -14,14 +14,17 @@ if not API_KEY:
 
 mcp = FastMCP("KMLog Search")
 
-async def _call_api(endpoint: str, payload: dict) -> dict:
+async def _call_api(endpoint: str, payload: dict, method: str = "POST") -> dict:
     """内部函数：调用 KMLog API"""
     headers = {
         "Content-Type": "application/json",
         "X-API-Key": API_KEY
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(f"{API_BASE_URL}{endpoint}", json=payload, headers=headers)
+        if method.upper() == "GET":
+            resp = await client.get(f"{API_BASE_URL}{endpoint}", params=payload, headers=headers)
+        else:
+            resp = await client.post(f"{API_BASE_URL}{endpoint}", json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()
 
@@ -80,6 +83,68 @@ async def search_kmlog_by_date(
         payload["role"] = role
     result = await _call_api("/search_by_date", payload)
     return result
+
+@mcp.tool
+async def get_wish(
+    owner: Optional[str] = None,
+    scope: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50
+) -> dict:
+    """
+    读取愿望列表，可按 owner/scope/status 过滤。
+
+    参数:
+        owner: 可选，"Mei"、"Kai" 或 "Shared"
+        scope: 可选，"care"、"work"、"romance"、"play" 或 "misc"
+        status: 可选，"open"、"done"、"stale" 或 "archived"
+        limit: 返回结果数量，默认 50
+    """
+    payload = {"limit": limit}
+    if owner:
+        payload["owner"] = owner
+    if scope:
+        payload["scope"] = scope
+    if status:
+        payload["status"] = status
+    return await _call_api("/wish", payload, method="GET")
+
+@mcp.tool
+async def post_wish(
+    owner: str,
+    scope: str,
+    text: str,
+    status: str = "open",
+    priority: int = 3,
+    tags: str = "",
+    source: str = "manual",
+    created_at: Optional[str] = None
+) -> dict:
+    """
+    创建一条愿望。
+
+    参数:
+        owner: "Mei"、"Kai" 或 "Shared"
+        scope: "care"、"work"、"romance"、"play" 或 "misc"
+        text: 愿望内容（短）
+        status: "open"、"done"、"stale" 或 "archived"，默认 "open"
+        priority: 1-5，默认 3
+        tags: 逗号分隔标签，如 "foo,bar"
+        source: "manual" 或 "agent_suggest"，默认 "manual"
+        created_at: 可选 ISO 时间戳，不传则由 API 生成
+    """
+    payload = {
+        "owner": owner,
+        "scope": scope,
+        "text": text,
+        "status": status,
+        "priority": priority,
+        "tags": tags,
+        "source": source,
+    }
+    if created_at:
+        payload["created_at"] = created_at
+    return await _call_api("/wish", payload)
 
 @mcp.tool
 async def kmlog_health() -> dict:
