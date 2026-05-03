@@ -157,14 +157,14 @@ def list_wishes(
         conn.close()
 
 
-def complete_wish(wish_id: int) -> dict | None:
+def update_wish_status(wish_id: int, status: str) -> dict | None:
     conn = get_connection()
     try:
         cursor = conn.cursor()
         ensure_wishes_table(cursor)
         cursor.execute(
-            "UPDATE wishes SET status = 'done' WHERE id = ?",
-            (wish_id,),
+            "UPDATE wishes SET status = ? WHERE id = ?",
+            (status, wish_id),
         )
         if cursor.rowcount == 0:
             conn.rollback()
@@ -175,6 +175,10 @@ def complete_wish(wish_id: int) -> dict | None:
         return _wish_row_to_dict(row)
     finally:
         conn.close()
+
+
+def complete_wish(wish_id: int) -> dict | None:
+    return update_wish_status(wish_id, "done")
 
 def _count_token_hits(text: str, tokens: list[str]) -> int:
     t = (text or "")

@@ -1,7 +1,10 @@
 import os
-from fastapi import FastAPI, HTTPException, Header
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List
 
 SEARCH_BACKEND = os.getenv("KMLOG_SEARCH_BACKEND", "sqlite").strip().lower()
 
@@ -16,6 +19,7 @@ if SEARCH_BACKEND == "supabase":
     complete_wish = None
     create_wish = None
     list_wishes = None
+    update_wish_status = None
 else:
     try:
         from search_sqlite import (
@@ -26,6 +30,7 @@ else:
             list_wishes,
             search_by_date,
             search_messages,
+            update_wish_status,
         )
     except ModuleNotFoundError as exc:
         if exc.name != "search_sqlite":
@@ -38,11 +43,32 @@ else:
             list_wishes,
             search_by_date,
             search_messages,
+            update_wish_status,
         )
 
 APP_TOKEN = os.getenv("SEARCH_API_TOKEN", "")
+DISABLE_DOCS = os.getenv("KMLOG_DISABLE_DOCS", "").strip().lower() in {"1", "true", "yes"}
+SERVER_DIR = Path(__file__).resolve().parent
+STATIC_DIR = SERVER_DIR / "static"
 
-app = FastAPI(title="KMLog Search API", version="0.1")
+app = FastAPI(
+    title="KMLog Search API",
+    version="0.1",
+    docs_url=None if DISABLE_DOCS else "/docs",
+    redoc_url=None if DISABLE_DOCS else "/redoc",
+    openapi_url=None if DISABLE_DOCS else "/openapi.json",
+)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 
 def auth(x_api_key: Optional[str]) -> None:
@@ -80,6 +106,10 @@ class WishReq(BaseModel):
     created_at: Optional[str] = None
 
 
+class WishStatusReq(BaseModel):
+    status: str
+
+
 WISH_OWNERS = {"Mei", "Kai", "Shared"}
 WISH_SCOPES = {"care", "work", "romance", "play", "misc"}
 WISH_STATUSES = {"open", "done", "stale", "archived"}
@@ -87,7 +117,13 @@ WISH_SOURCES = {"manual", "agent_suggest"}
 
 
 def _ensure_wishes_supported() -> None:
-    if SEARCH_BACKEND != "sqlite" or complete_wish is None or create_wish is None or list_wishes is None:
+    if (
+        SEARCH_BACKEND != "sqlite"
+        or complete_wish is None
+        or create_wish is None
+        or list_wishes is None
+        or update_wish_status is None
+    ):
         raise HTTPException(status_code=501, detail="Wishes are only implemented for the sqlite backend")
 
 
@@ -102,6 +138,16 @@ def _validate_choice(name: str, value: Optional[str], allowed: set[str]) -> None
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "backend": SEARCH_BACKEND}
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    return "User-agent: *\nDisallow: /\n"
+
+
+@app.get("/wishes", response_class=HTMLResponse)
+def wishes_page():
+    return (STATIC_DIR / "wishes.html").read_text(encoding="utf-8")
 
 
 @app.post("/ensure_indexes")
@@ -222,6 +268,22 @@ def api_post_wish(req: WishReq, x_api_key: Optional[str] = Header(default=None))
         source=req.source,
         created_at=req.created_at,
     )
+    return {"ok": True, "wish": wish}
+
+
+@app.post("/wish/{wish_id}/status")
+def api_update_wish_status(
+    wish_id: int,
+    req: WishStatusReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_wishes_supported()
+    _validate_choice("status", req.status, WISH_STATUSES)
+
+    wish = update_wish_status(wish_id, req.status)
+    if wish is None:
+        raise HTTPException(status_code=404, detail="Wish not found")
     return {"ok": True, "wish": wish}
 
 

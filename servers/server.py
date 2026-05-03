@@ -165,6 +165,17 @@ async def complete_wish(wish_id: int) -> dict:
     return await _call_api(f"/complete_wish/{wish_id}", {})
 
 @mcp.tool
+async def set_wish_status(wish_id: int, status: str) -> dict:
+    """
+    更新一条愿望的状态。
+
+    参数:
+        wish_id: 愿望 ID
+        status: "open"、"done"、"stale" 或 "archived"
+    """
+    return await _call_api(f"/wish/{wish_id}/status", {"status": status})
+
+@mcp.tool
 async def kmlog_health() -> dict:
     """检查 KMLog API 服务健康状态"""
     async with httpx.AsyncClient(timeout=5.0) as client:

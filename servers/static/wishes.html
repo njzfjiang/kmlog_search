@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wish Drawer</title>
+  <link rel="stylesheet" href="/static/wishes.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">KMLog</p>
+        <h1>Wish Drawer</h1>
+      </div>
+      <label class="token-field">
+        <span>Token</span>
+        <input id="apiToken" type="password" autocomplete="off">
+      </label>
+    </header>
+
+    <section class="panel compose-panel" aria-label="Add wish">
+      <form id="wishForm" class="wish-form">
+        <label class="text-field wide">
+          <span>Wish</span>
+          <textarea id="wishText" rows="3" required maxlength="500"></textarea>
+        </label>
+        <div class="field-row">
+          <label class="text-field">
+            <span>Owner</span>
+            <select id="wishOwner">
+              <option>Mei</option>
+              <option>Kai</option>
+              <option>Shared</option>
+            </select>
+          </label>
+          <label class="text-field">
+            <span>Scope</span>
+            <select id="wishScope">
+              <option>care</option>
+              <option>work</option>
+              <option>romance</option>
+              <option>play</option>
+              <option>misc</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="text-field">
+            <span>Priority</span>
+            <input id="wishPriority" type="number" min="1" max="5" value="3">
+          </label>
+          <label class="text-field">
+            <span>Tags</span>
+            <input id="wishTags" type="text" placeholder="foo,bar">
+          </label>
+        </div>
+        <div class="form-actions">
+          <p id="formMessage" class="message" role="status"></p>
+          <button class="primary-button" type="submit">Add</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="filters" aria-label="Wish filters">
+      <div class="segment" data-filter="status">
+        <button type="button" data-value="open" class="active">Open</button>
+        <button type="button" data-value="done">Done</button>
+        <button type="button" data-value="stale">Stale</button>
+        <button type="button" data-value="archived">Archived</button>
+        <button type="button" data-value="">All</button>
+      </div>
+      <div class="filter-row">
+        <select id="ownerFilter" aria-label="Owner filter">
+          <option value="">All owners</option>
+          <option>Mei</option>
+          <option>Kai</option>
+          <option>Shared</option>
+        </select>
+        <select id="scopeFilter" aria-label="Scope filter">
+          <option value="">All scopes</option>
+          <option>care</option>
+          <option>work</option>
+          <option>romance</option>
+          <option>play</option>
+          <option>misc</option>
+        </select>
+        <input id="keywordFilter" type="search" placeholder="Search text or tags" aria-label="Keyword filter">
+      </div>
+    </section>
+
+    <section class="list-shell" aria-live="polite">
+      <div class="list-heading">
+        <h2>Wishes</h2>
+        <span id="resultCount">0</span>
+      </div>
+      <div id="wishList" class="wish-list"></div>
+      <p id="emptyState" class="empty-state" hidden>No wishes here.</p>
+    </section>
+  </main>
+
+  <script src="/static/wishes.js"></script>
+</body>
+</html>
