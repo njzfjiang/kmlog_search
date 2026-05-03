@@ -3,7 +3,7 @@ import os
 import httpx
 import sys
 from fastmcp import FastMCP
-from typing import Optional
+from typing import Optional, List
 
 # 从环境变量读取配置
 API_BASE_URL = os.getenv("KMLOG_API_URL", "http://127.0.0.1:8013")
@@ -26,7 +26,14 @@ async def _call_api(endpoint: str, payload: dict) -> dict:
         return resp.json()
 
 @mcp.tool
-async def search_kmlog(query: str, limit: int = 10, mode: str = "auto") -> dict:
+async def search_kmlog(
+    query: str,
+    limit: int = 10,
+    mode: str = "auto",
+    kinds: Optional[List[str]] = None,
+    after: Optional[str] = None,
+    before: Optional[str] = None,
+) -> dict:
     """
     搜索 KMLog 消息内容（全文搜索）
     
@@ -34,8 +41,17 @@ async def search_kmlog(query: str, limit: int = 10, mode: str = "auto") -> dict:
         query: 搜索关键词
         limit: 返回结果数量，默认 10
         mode: 搜索模式，可选 "auto", "phrase", "tokens"，默认 "auto"
+        kinds: 可选，消息类型过滤，如 ["chat"]、["summary"] 或 ["chat", "summary"]
+        after: 可选，只搜索这个时间之后的消息，如 "2026-01-01"
+        before: 可选，只搜索这个时间之前的消息，如 "2026-05-01"
     """
     payload = {"query": query, "limit": limit, "mode": mode}
+    if kinds:
+        payload["kinds"] = kinds
+    if after:
+        payload["after"] = after
+    if before:
+        payload["before"] = before
     result = await _call_api("/search", payload)
     return result
 

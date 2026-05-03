@@ -23,9 +23,14 @@ def ensure_search_indexes():
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        columns = {row[1] for row in cursor.execute("PRAGMA table_info(messages)").fetchall()}
+        if "kind" not in columns:
+            cursor.execute("ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'chat'")
+        cursor.execute("UPDATE messages SET kind = 'chat' WHERE kind IS NULL OR kind = ''")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_timestamp_idx ON messages(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_role_idx ON messages(role)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS messages_kind_idx ON messages(kind)")
         conn.commit()
         print("SQLite search indexes are ready")
     finally:
@@ -89,10 +94,21 @@ def escape_fts5_query(query: str) -> str:
     return f'"{query}"' if query else '""'
 
 
-def _search_messages_single(query: str, limit: int = 10):
+def _search_messages_single(
+    query: str,
+    limit: int = 10,
+    kinds: list[str] | None = None,
+    after: str | None = None,
+    before: str | None = None,
+):
     query_raw = (query or "").strip()
     if not query_raw:
         return []
+
+    kinds = [kind for kind in (kinds or ["chat"]) if kind]
+    if not kinds:
+        kinds = ["chat"]
+    kinds_placeholders = ",".join(["?"] * len(kinds))
 
     query_compact = re.sub(r"\s+", "", query_raw)
     like_query = f"%{query_raw}%"
@@ -102,57 +118,56 @@ def _search_messages_single(query: str, limit: int = 10):
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             WITH fts_hits AS (
-                SELECT rowid, bm25(messages_fts) AS bm25_score
-                FROM messages_fts
-                WHERE messages_fts MATCH ?
-            )
-            SELECT
-                messages.id,
-                messages.timestamp,
-                messages.role,
-                substr(messages.content, 1, 160) AS content_preview,
-                messages.conversation_title,
-(
+  SELECT rowid, bm25(messages_fts) AS bm25_score
+  FROM messages_fts
+  WHERE messages_fts MATCH ?
+)
+SELECT
+  messages.id,
+  messages.timestamp,
+  messages.role,
+  substr(messages.content, 1, 160) AS content_preview,
+  messages.conversation_title,
+
   (
-    -COALESCE(fts_hits.bm25_score, 0.0)
-    + CASE WHEN messages.conversation_title LIKE ? THEN 0.8 ELSE 0 END
-    + CASE WHEN messages.content LIKE ? THEN 0.4 ELSE 0 END
-    + CASE WHEN messages.conversation_title LIKE ? THEN 0.4 ELSE 0 END
-    + CASE WHEN messages.content LIKE ? THEN 0.2 ELSE 0 END
+    (
+      -COALESCE(fts_hits.bm25_score, 0.0)
+      + CASE WHEN messages.conversation_title LIKE ? THEN 0.8 ELSE 0 END
+      + CASE WHEN messages.content LIKE ? THEN 0.4 ELSE 0 END
+      + CASE WHEN messages.conversation_title LIKE ? THEN 0.4 ELSE 0 END
+      + CASE WHEN messages.content LIKE ? THEN 0.2 ELSE 0 END
+    )
+    * CASE messages.kind
+        WHEN 'chat' THEN 1.0
+        WHEN 'meta' THEN 0.8
+        WHEN 'summary' THEN 0.4
+        ELSE 1.0
+      END
+  ) AS relevance,
+
+  CASE
+    WHEN fts_hits.rowid IS NOT NULL THEN 'fts'
+    WHEN messages.conversation_title LIKE ? OR messages.conversation_title LIKE ? THEN 'title'
+    ELSE 'content'
+  END AS match_type
+
+FROM messages
+LEFT JOIN fts_hits ON fts_hits.rowid = messages.id
+WHERE
+  messages.kind IN ({kinds_placeholders})
+  AND (? IS NULL OR messages.timestamp >= ?)
+  AND (? IS NULL OR messages.timestamp <= ?)
+  AND (
+       fts_hits.rowid IS NOT NULL
+    OR messages.content LIKE ?
+    OR messages.conversation_title LIKE ?
+    OR messages.content LIKE ?
+    OR messages.conversation_title LIKE ?
   )
-  * (
-    CASE
-      WHEN length(messages.content) > 900 AND (
-           messages.content LIKE '%发生了什么%' OR messages.content LIKE '%Mei%' OR messages.content LIKE '%Kai%'
-        OR messages.content LIKE '%重要摘录%' OR messages.content LIKE '%摘要%' OR messages.content LIKE '%整理%'
-        OR messages.content LIKE '%复盘%' OR messages.content LIKE '%Tag:%' OR messages.content LIKE '%标签%'
-        OR messages.content LIKE '%我这边%' OR messages.content LIKE '%我这段主要是%' OR messages.content LIKE '%状态总结%'
-        OR (messages.content LIKE '%##%' AND messages.content LIKE '%---%')
-        OR (messages.content LIKE '%- %' AND messages.content LIKE '%##%')
-      )
-      THEN 0.45
-      ELSE 1.0
-    END
-  )
-) AS relevance,
-                CASE
-                    WHEN fts_hits.rowid IS NOT NULL THEN 'fts'
-                    WHEN messages.conversation_title LIKE ?
-                      OR messages.conversation_title LIKE ? THEN 'title'
-                    ELSE 'content'
-                END AS match_type
-            FROM messages
-            LEFT JOIN fts_hits ON fts_hits.rowid = messages.rowid
-            WHERE fts_hits.rowid IS NOT NULL
-               OR messages.content LIKE ?
-               OR messages.conversation_title LIKE ?
-               OR messages.content LIKE ?
-               OR messages.conversation_title LIKE ?
-            ORDER BY relevance DESC, timestamp DESC
-            LIMIT ?
-        """, (
+ORDER BY relevance DESC, messages.timestamp DESC
+LIMIT ?;""", (
             fts_query,
             like_query,
             like_query,
@@ -160,6 +175,11 @@ def _search_messages_single(query: str, limit: int = 10):
             like_query_compact,
             like_query,
             like_query_compact,
+            *kinds,
+            after,
+            after,
+            before,
+            before,
             like_query,
             like_query,
             like_query_compact,
@@ -172,7 +192,13 @@ def _search_messages_single(query: str, limit: int = 10):
         conn.close()
 
 
-def _search_messages_tokens(query: str, limit: int = 10):
+def _search_messages_tokens(
+    query: str,
+    limit: int = 10,
+    kinds: list[str] | None = None,
+    after: str | None = None,
+    before: str | None = None,
+):
     tokens = split_tokens_for_fallback(query)
     if len(tokens) <= 1:
         return [], {}
@@ -183,7 +209,13 @@ def _search_messages_tokens(query: str, limit: int = 10):
     per_token_limit = max(10, limit)
 
     for token in tokens:
-        rows = _search_messages_single(token, limit=per_token_limit)
+        rows = _search_messages_single(
+            token,
+            limit=per_token_limit,
+            kinds=kinds,
+            after=after,
+            before=before,
+        )
         for row in rows:
             message_pk = row[0]
             hit_count[message_pk] += 1
@@ -202,7 +234,14 @@ def _search_messages_tokens(query: str, limit: int = 10):
     return ranked[:limit], token_hits
 
 
-def search_messages(query: str, limit: int = 10, mode: str = "auto"):
+def search_messages(
+    query: str,
+    limit: int = 10,
+    mode: str = "auto",
+    kinds: list[str] | None = None,
+    after: str | None = None,
+    before: str | None = None,
+):
     query = (query or "").strip()
     if not query:
         return [], {}
@@ -212,16 +251,44 @@ def search_messages(query: str, limit: int = 10, mode: str = "auto"):
         mode = "tokens" if len(tokens) >= 2 else "phrase"
 
     if mode == "tokens":
-        ranked, hit_count = _search_messages_tokens(query, limit=limit)
+        ranked, hit_count = _search_messages_tokens(
+            query,
+            limit=limit,
+            kinds=kinds,
+            after=after,
+            before=before,
+        )
         if ranked:
             return ranked, hit_count
-        return _rank_rows_by_token_hits(_search_messages_single(query, limit=limit), tokens, limit)
+        return _rank_rows_by_token_hits(
+            _search_messages_single(
+                query,
+                limit=limit,
+                kinds=kinds,
+                after=after,
+                before=before,
+            ),
+            tokens,
+            limit,
+        )
 
-    base = _search_messages_single(query, limit=limit)
+    base = _search_messages_single(
+        query,
+        limit=limit,
+        kinds=kinds,
+        after=after,
+        before=before,
+    )
     if base:
         return _rank_rows_by_token_hits(base, tokens, limit)
 
-    return _search_messages_tokens(query, limit=limit)
+    return _search_messages_tokens(
+        query,
+        limit=limit,
+        kinds=kinds,
+        after=after,
+        before=before,
+    )
 
 
 def search_by_date(start_date, end_date, role=None, limit=20):

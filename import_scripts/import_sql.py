@@ -19,7 +19,8 @@ cursor.execute('''
         content TEXT,
         conversation_title TEXT,
         conversation_id TEXT,
-        message_id TEXT UNIQUE
+        message_id TEXT UNIQUE,
+        kind TEXT DEFAULT 'chat'
     )
 ''')
 
@@ -47,13 +48,14 @@ with open('cleaned_chats.jsonl', 'r', encoding='utf-8') as f:
             msg['content'], 
             msg['conversation_title'], 
             msg['conversation_id'], 
-            msg['message_id']
+            msg['message_id'],
+            msg.get('kind') or 'chat'
         ))
 
 # 批量插入（大幅提速）
 cursor.executemany('''
-    INSERT INTO messages (timestamp, role, content, conversation_title, conversation_id, message_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (timestamp, role, content, conversation_title, conversation_id, message_id, kind)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 ''', messages_to_insert)
 
 # 5. 把新数据同步到FTS索引里

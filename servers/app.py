@@ -37,6 +37,9 @@ class SearchReq(BaseModel):
     query: str
     limit: int = 10
     mode: str = "auto"
+    kinds: Optional[List[str]] = None
+    after: Optional[str] = None
+    before: Optional[str] = None
 
 
 class SearchByDateReq(BaseModel):
@@ -61,11 +64,21 @@ def api_ensure_indexes(x_api_key: Optional[str] = Header(default=None)):
 @app.post("/search")
 def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
     auth(x_api_key)
-    rows, hit_count = search_messages(req.query, limit=req.limit, mode=req.mode)
+    rows, hit_count = search_messages(
+        req.query,
+        limit=req.limit,
+        mode=req.mode,
+        kinds=req.kinds,
+        after=req.after,
+        before=req.before,
+    )
     # rows: (id, timestamp, role, content_preview, conversation_title, relevance, match_type)
     return {
         "query": req.query,
         "mode": req.mode,
+        "kinds": req.kinds,
+        "after": req.after,
+        "before": req.before,
         "results": [
             {
                 "id": r[0],

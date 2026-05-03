@@ -62,9 +62,15 @@ POST /ensure_indexes
 {
   "query": "keyword",
   "limit": 10,
-  "mode": "auto"
+  "mode": "auto",
+  "kinds": ["chat"],
+  "after": "2026-01-01",
+  "before": "2026-05-01"
 }
 ```
+
+`kinds`, `after`, and `before` are optional. If `kinds` is omitted, `/search`
+defaults to `["chat"]`.
 
 `/search_by_date` request:
 

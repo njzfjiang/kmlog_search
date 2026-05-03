@@ -54,7 +54,7 @@ def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
             continue
 
         seen_message_ids.add(message_id)
-        rows.append(tuple(row[field] for field in REQUIRED_FIELDS))
+        rows.append(tuple(row[field] for field in REQUIRED_FIELDS) + (row.get("kind") or "chat",))
 
     if not rows:
         raise RuntimeError("No messages found to import.")
@@ -76,7 +76,8 @@ def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
                 content TEXT,
                 conversation_title TEXT,
                 conversation_id TEXT,
-                message_id TEXT UNIQUE
+                message_id TEXT UNIQUE,
+                kind TEXT DEFAULT 'chat'
             )
         """)
 
@@ -97,15 +98,17 @@ def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
                 content,
                 conversation_title,
                 conversation_id,
-                message_id
+                message_id,
+                kind
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
         cursor.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
         cursor.execute("CREATE INDEX messages_timestamp_idx ON messages(timestamp)")
         cursor.execute("CREATE INDEX messages_role_idx ON messages(role)")
         cursor.execute("CREATE INDEX messages_conversation_idx ON messages(conversation_id)")
+        cursor.execute("CREATE INDEX messages_kind_idx ON messages(kind)")
 
         conn.commit()
     finally:
