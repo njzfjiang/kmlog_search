@@ -86,27 +86,35 @@ async def search_kmlog_by_date(
 
 @mcp.tool
 async def get_wish(
+    wish_id: Optional[int] = None,
     owner: Optional[str] = None,
     scope: Optional[str] = None,
     status: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = 50
 ) -> dict:
     """
-    读取愿望列表，可按 owner/scope/status 过滤。
+    读取愿望列表，可按 id/keyword/owner/scope/status 过滤。
 
     参数:
+        wish_id: 可选，愿望 ID
+        q: 可选，在 text/tags 里搜索的关键词
         owner: 可选，"Mei"、"Kai" 或 "Shared"
         scope: 可选，"care"、"work"、"romance"、"play" 或 "misc"
         status: 可选，"open"、"done"、"stale" 或 "archived"
         limit: 返回结果数量，默认 50
     """
     payload = {"limit": limit}
+    if wish_id is not None:
+        payload["id"] = wish_id
     if owner:
         payload["owner"] = owner
     if scope:
         payload["scope"] = scope
     if status:
         payload["status"] = status
+    if q:
+        payload["q"] = q
     return await _call_api("/wish", payload, method="GET")
 
 @mcp.tool
@@ -145,6 +153,16 @@ async def post_wish(
     if created_at:
         payload["created_at"] = created_at
     return await _call_api("/wish", payload)
+
+@mcp.tool
+async def complete_wish(wish_id: int) -> dict:
+    """
+    将一条愿望标记为完成。
+
+    参数:
+        wish_id: 愿望 ID
+    """
+    return await _call_api(f"/complete_wish/{wish_id}", {})
 
 @mcp.tool
 async def kmlog_health() -> dict:

@@ -13,11 +13,13 @@ if SEARCH_BACKEND == "supabase":
             raise
         from servers.search_supabase import ensure_search_indexes, search_messages, search_by_date
     ensure_wish_indexes = None
+    complete_wish = None
     create_wish = None
     list_wishes = None
 else:
     try:
         from search_sqlite import (
+            complete_wish,
             create_wish,
             ensure_search_indexes,
             ensure_wish_indexes,
@@ -29,6 +31,7 @@ else:
         if exc.name != "search_sqlite":
             raise
         from servers.search_sqlite import (
+            complete_wish,
             create_wish,
             ensure_search_indexes,
             ensure_wish_indexes,
@@ -84,7 +87,7 @@ WISH_SOURCES = {"manual", "agent_suggest"}
 
 
 def _ensure_wishes_supported() -> None:
-    if SEARCH_BACKEND != "sqlite" or create_wish is None or list_wishes is None:
+    if SEARCH_BACKEND != "sqlite" or complete_wish is None or create_wish is None or list_wishes is None:
         raise HTTPException(status_code=501, detail="Wishes are only implemented for the sqlite backend")
 
 
@@ -168,9 +171,11 @@ def api_search_by_date(req: SearchByDateReq, x_api_key: Optional[str] = Header(d
 
 @app.get("/wish")
 def api_get_wish(
+    id: Optional[int] = None,
     owner: Optional[str] = None,
     scope: Optional[str] = None,
     status: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = 50,
     x_api_key: Optional[str] = Header(default=None),
 ):
@@ -183,10 +188,12 @@ def api_get_wish(
         raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
 
     return {
+        "id": id,
         "owner": owner,
         "scope": scope,
         "status": status,
-        "results": list_wishes(owner=owner, scope=scope, status=status, limit=limit),
+        "q": q,
+        "results": list_wishes(wish_id=id, owner=owner, scope=scope, status=status, q=q, limit=limit),
     }
 
 
@@ -215,4 +222,14 @@ def api_post_wish(req: WishReq, x_api_key: Optional[str] = Header(default=None))
         source=req.source,
         created_at=req.created_at,
     )
+    return {"ok": True, "wish": wish}
+
+
+@app.post("/complete_wish/{wish_id}")
+def api_complete_wish(wish_id: int, x_api_key: Optional[str] = Header(default=None)):
+    auth(x_api_key)
+    _ensure_wishes_supported()
+    wish = complete_wish(wish_id)
+    if wish is None:
+        raise HTTPException(status_code=404, detail="Wish not found")
     return {"ok": True, "wish": wish}

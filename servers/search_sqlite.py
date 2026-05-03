@@ -112,9 +112,11 @@ def create_wish(
 
 
 def list_wishes(
+    wish_id: int | None = None,
     owner: str | None = None,
     scope: str | None = None,
     status: str | None = None,
+    q: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     conn = get_connection()
@@ -124,6 +126,9 @@ def list_wishes(
 
         clauses = []
         params = []
+        if wish_id is not None:
+            clauses.append("id = ?")
+            params.append(wish_id)
         if owner:
             clauses.append("owner = ?")
             params.append(owner)
@@ -133,6 +138,10 @@ def list_wishes(
         if status:
             clauses.append("status = ?")
             params.append(status)
+        if q:
+            like_query = f"%{q}%"
+            clauses.append("(text LIKE ? OR tags LIKE ?)")
+            params.extend([like_query, like_query])
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         params.append(limit)
@@ -144,6 +153,26 @@ def list_wishes(
             LIMIT ?
         """, params).fetchall()
         return [_wish_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def complete_wish(wish_id: int) -> dict | None:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_wishes_table(cursor)
+        cursor.execute(
+            "UPDATE wishes SET status = 'done' WHERE id = ?",
+            (wish_id,),
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return None
+
+        conn.commit()
+        row = cursor.execute("SELECT * FROM wishes WHERE id = ?", (wish_id,)).fetchone()
+        return _wish_row_to_dict(row)
     finally:
         conn.close()
 

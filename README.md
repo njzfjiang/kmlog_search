@@ -52,6 +52,7 @@ Useful environment variables:
 ```text
 GET  /healthz
 GET  /wish
+POST /complete_wish/{id}
 POST /search
 POST /search_by_date
 POST /wish
@@ -74,13 +75,15 @@ POST /ensure_indexes
 `GET /wish` query parameters:
 
 ```text
+id=12
+q=keyword
 owner=Mei|Kai|Shared
 scope=care|work|romance|play|misc
 status=open|done|stale|archived
 limit=50
 ```
 
-All filters are optional.
+All filters are optional. `q` searches wish text and tags.
 
 `POST /wish` request:
 
@@ -95,6 +98,8 @@ All filters are optional.
   "source": "manual"
 }
 ```
+
+`POST /complete_wish/{id}` marks a wish as `done` and returns the updated row.
 
 `kinds`, `after`, and `before` are optional. If `kinds` is omitted, `/search`
 defaults to `["chat"]`.
