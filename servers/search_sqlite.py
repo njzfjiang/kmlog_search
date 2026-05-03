@@ -31,6 +31,34 @@ def ensure_search_indexes():
     finally:
         conn.close()
 
+def _count_token_hits(text: str, tokens: list[str]) -> int:
+    t = (text or "")
+    hits = 0
+    for tok in tokens:
+        if tok and tok in t:
+            hits += 1
+    return hits
+
+
+def _row_token_text(row) -> str:
+    return f"{row[4] or ''}\n{row[3] or ''}"
+
+
+def _rank_rows_by_token_hits(rows, tokens, limit: int):
+    if not rows:
+        return [], {}
+
+    token_hits = {
+        row[0]: _count_token_hits(_row_token_text(row), tokens)
+        for row in rows
+    }
+    ranked = sorted(
+        rows,
+        key=lambda row: (token_hits[row[0]], float(row[5] or 0), row[1]),
+        reverse=True,
+    )
+    return ranked[:limit], token_hits
+
 
 def split_tokens_for_fallback(q: str, max_tokens: int = 8):
     q = (q or "").strip()
@@ -86,13 +114,29 @@ def _search_messages_single(query: str, limit: int = 10):
                 messages.role,
                 substr(messages.content, 1, 160) AS content_preview,
                 messages.conversation_title,
-                (
-                    CASE WHEN fts_hits.rowid IS NOT NULL THEN 10.0 / (1.0 + ABS(fts_hits.bm25_score)) ELSE 0 END
-                    + CASE WHEN messages.conversation_title LIKE ? THEN 0.8 ELSE 0 END
-                    + CASE WHEN messages.content LIKE ? THEN 0.4 ELSE 0 END
-                    + CASE WHEN messages.conversation_title LIKE ? THEN 0.4 ELSE 0 END
-                    + CASE WHEN messages.content LIKE ? THEN 0.2 ELSE 0 END
-                ) AS relevance,
+(
+  (
+    COALESCE(fts_hits.bm25_score, 0.0)
+    + CASE WHEN messages.conversation_title LIKE ? THEN 0.8 ELSE 0 END
+    + CASE WHEN messages.content LIKE ? THEN 0.4 ELSE 0 END
+    + CASE WHEN messages.conversation_title LIKE ? THEN 0.4 ELSE 0 END
+    + CASE WHEN messages.content LIKE ? THEN 0.2 ELSE 0 END
+  )
+  * (
+    CASE
+      WHEN length(messages.content) > 900 AND (
+           messages.content LIKE '%发生了什么%' OR messages.content LIKE '%Mei%' OR messages.content LIKE '%Kai%'
+        OR messages.content LIKE '%重要摘录%' OR messages.content LIKE '%摘要%' OR messages.content LIKE '%整理%'
+        OR messages.content LIKE '%复盘%' OR messages.content LIKE '%Tag:%' OR messages.content LIKE '%标签%'
+        OR messages.content LIKE '%我这边%' OR messages.content LIKE '%我这段主要是%' OR messages.content LIKE '%状态总结%'
+        OR (messages.content LIKE '%##%' AND messages.content LIKE '%---%')
+        OR (messages.content LIKE '%- %' AND messages.content LIKE '%##%')
+      )
+      THEN 0.45
+      ELSE 1.0
+    END
+  )
+) AS relevance,
                 CASE
                     WHEN fts_hits.rowid IS NOT NULL THEN 'fts'
                     WHEN messages.conversation_title LIKE ?
@@ -146,12 +190,16 @@ def _search_messages_tokens(query: str, limit: int = 10):
             best_rel[message_pk] = max(best_rel[message_pk], float(row[5] or 0))
             merged[message_pk] = row
 
+    token_hits = {
+        row[0]: max(hit_count[row[0]], _count_token_hits(_row_token_text(row), tokens))
+        for row in merged.values()
+    }
     ranked = sorted(
         merged.values(),
-        key=lambda row: (hit_count[row[0]], best_rel[row[0]], row[1]),
+        key=lambda row: (token_hits[row[0]], best_rel[row[0]], row[1]),
         reverse=True,
     )
-    return ranked[:limit], hit_count
+    return ranked[:limit], token_hits
 
 
 def search_messages(query: str, limit: int = 10, mode: str = "auto"):
@@ -167,11 +215,11 @@ def search_messages(query: str, limit: int = 10, mode: str = "auto"):
         ranked, hit_count = _search_messages_tokens(query, limit=limit)
         if ranked:
             return ranked, hit_count
-        return _search_messages_single(query, limit=limit), {}
+        return _rank_rows_by_token_hits(_search_messages_single(query, limit=limit), tokens, limit)
 
     base = _search_messages_single(query, limit=limit)
     if base:
-        return base, {}
+        return _rank_rows_by_token_hits(base, tokens, limit)
 
     return _search_messages_tokens(query, limit=limit)
 
