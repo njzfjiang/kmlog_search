@@ -116,7 +116,7 @@ def _search_messages_single(query: str, limit: int = 10):
                 messages.conversation_title,
 (
   (
-    COALESCE(fts_hits.bm25_score, 0.0)
+    -COALESCE(fts_hits.bm25_score, 0.0)
     + CASE WHEN messages.conversation_title LIKE ? THEN 0.8 ELSE 0 END
     + CASE WHEN messages.content LIKE ? THEN 0.4 ELSE 0 END
     + CASE WHEN messages.conversation_title LIKE ? THEN 0.4 ELSE 0 END
