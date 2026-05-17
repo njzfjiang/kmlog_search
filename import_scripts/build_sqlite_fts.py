@@ -1,5 +1,7 @@
 import argparse
 import json
+from collections import Counter
+import re
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +12,62 @@ DEFAULT_INPUTS = [
     PROJECT_ROOT / "chat_data" / "chatgpt_incremental_deduped.jsonl",
 ]
 DEFAULT_OUTPUT = PROJECT_ROOT / "chat_data" / "chat_search.db"
+VALID_KINDS = {"chat", "summary", "meta", "noise"}
+SUMMARY_CARD_RE = re.compile(
+    r"(^|\n)##\s+\d+\.\s+.+?\n.*?Tag[：:].*?\n.*?(时间戳|timestamp)[：:].*?\n.*?(发生了什么|what happened)[：:]",
+    re.IGNORECASE | re.DOTALL,
+)
+SUMMARY_MARKERS = (
+    "[summary of previous conversation]",
+    "summary of previous conversation",
+    "## summary",
+    "# summary",
+    "conversation summary",
+    "长期记忆摘要",
+    "对话摘要",
+    "窗口摘要",
+    "总结卡片",
+)
+SUMMARY_TITLE_MARKERS = (
+    "summary",
+    "daily summary",
+    "rolling summary",
+    "conversation summary",
+)
+NOISE_MARKERS = (
+    "http error",
+    "http 400",
+    "http 401",
+    "http 403",
+    "http 404",
+    "http 429",
+    "http 500",
+    "http 502",
+    "http 503",
+    "traceback (most recent call last)",
+    "error:",
+    "exception:",
+    "failed to",
+    "connection error",
+    "read timed out",
+    "rate limit",
+    "bad gateway",
+    "service unavailable",
+)
+META_MARKERS = (
+    "chat-proxy",
+    "kmlog-search",
+    "sqlite",
+    "fts5",
+    "build_sqlite_fts",
+    "cleaned_chats.jsonl",
+    "manual_daily_summary",
+    "daily_summary",
+    "rolling summary",
+    "import_scripts",
+    "schema",
+    "database",
+)
 REQUIRED_FIELDS = (
     "timestamp",
     "role",
@@ -39,12 +97,52 @@ def iter_jsonl_messages(paths):
                 yield path, line_number, row
 
 
+def classify_kind(row):
+    raw_kind = str(row.get("kind") or "").strip().lower()
+    if raw_kind in VALID_KINDS:
+        return raw_kind
+
+    content = str(row.get("content") or "")
+    title = str(row.get("conversation_title") or "")
+    text = f"{title}\n{content}".lower()
+
+    if _has_any(text, NOISE_MARKERS) or _looks_like_error_noise(content):
+        return "noise"
+    if (
+        SUMMARY_CARD_RE.search(content)
+        or _has_any(text, SUMMARY_MARKERS)
+        or _looks_like_summary_title(title)
+    ):
+        return "summary"
+    if _has_any(text, META_MARKERS):
+        return "meta"
+    return "chat"
+
+
+def _looks_like_summary_title(title):
+    normalized = title.strip().lower()
+    return normalized in SUMMARY_TITLE_MARKERS or normalized.endswith(" summary")
+
+def _has_any(text, markers):
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_error_noise(content):
+    stripped = content.strip()
+    if len(stripped) > 1200:
+        return False
+    lowered = stripped.lower()
+    return (
+        lowered.startswith("http") and "error" in lowered
+    ) or lowered.startswith(("error ", "error:", "exception ", "exception:"))
+
 def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
     output_file = Path(output_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     seen_message_ids = set()
     rows = []
+    kind_counts = Counter()
     duplicate_rows = 0
 
     for _path, _line_number, row in iter_jsonl_messages([Path(p) for p in input_files]):
@@ -54,7 +152,9 @@ def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
             continue
 
         seen_message_ids.add(message_id)
-        rows.append(tuple(row[field] for field in REQUIRED_FIELDS) + (row.get("kind") or "chat",))
+        kind = classify_kind(row)
+        kind_counts[kind] += 1
+        rows.append(tuple(row[field] for field in REQUIRED_FIELDS) + (kind,))
 
     if not rows:
         raise RuntimeError("No messages found to import.")
@@ -118,6 +218,9 @@ def build_sqlite_fts(input_files=DEFAULT_INPUTS, output_file=DEFAULT_OUTPUT):
     print(f"  Output: {output_file}")
     print(f"  Imported rows: {len(rows)}")
     print(f"  Skipped duplicate message_id rows: {duplicate_rows}")
+    print("  Kind counts:")
+    for kind in sorted(kind_counts):
+        print(f"    {kind}: {kind_counts[kind]}")
 
 
 def main():
@@ -137,3 +240,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

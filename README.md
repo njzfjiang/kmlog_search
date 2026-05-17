@@ -35,6 +35,14 @@ and writes:
 
 - `chat_data/chat_search.db`
 
+During import, rows that do not already have `kind` are auto-classified with a
+small heuristic:
+
+- `chat`: normal messages.
+- `summary`: explicit summary artifacts, including numbered summary cards.
+- `meta`: infra/import/database/search/summary-mechanism discussion.
+- `noise`: HTTP errors, tracebacks, connection failures, and similar noise.
+
 ## Run The API
 
 ```powershell
@@ -176,3 +184,4 @@ sudo htpasswd -c /etc/nginx/.htpasswd-kmlog mei
 On a public host, also set a long random `SEARCH_API_TOKEN` and `KMLOG_DISABLE_DOCS=1`.
 The API sends `X-Robots-Tag: noindex, nofollow, noarchive`, and `/robots.txt`
 disallows crawling, but authentication remains the real security boundary.
+
