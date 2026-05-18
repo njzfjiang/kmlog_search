@@ -24,10 +24,10 @@ async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         r.raise_for_status()
         return r.json()
 
-async def _get(path: str) -> Dict[str, Any]:
+async def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     url = f"{BASE_URL}{path}"
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(url)
+        r = await client.get(url, headers=_headers(), params=params)
         r.raise_for_status()
         return r.json()
 
@@ -64,6 +64,62 @@ async def search_logs_by_date(
         "limit": int(limit),
     }
     return await _post("/search_by_date", payload)
+
+@mcp.tool()
+async def get_daily_summary(date_key: str) -> Dict[str, Any]:
+    """Read one complete daily summary by date_key, formatted as YYYY-MM-DD."""
+    return await _get("/daily_summary", {"date_key": date_key})
+
+@mcp.tool()
+async def list_daily_summaries(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """List daily summaries, optionally filtered by date range and status."""
+    params: Dict[str, Any] = {"limit": int(limit)}
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+    if status:
+        params["status"] = status
+    return await _get("/daily_summaries", params)
+
+@mcp.tool()
+async def get_daily_memory_candidates(
+    date_key: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """Read suggested memory/summary candidates generated from daily summaries."""
+    params: Dict[str, Any] = {"limit": int(limit)}
+    if date_key:
+        params["date_key"] = date_key
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
+    if status:
+        params["status"] = status
+    if domain:
+        params["domain"] = domain
+    if function:
+        params["function"] = function
+    if q:
+        params["q"] = q
+    return await _get("/daily_memory_candidates", params)
+
+@mcp.tool()
+async def get_conversation_summary(conversation_id: str) -> Dict[str, Any]:
+    """Read the rolling summary for one conversation_id."""
+    return await _get("/conversation_summary", {"conversation_id": conversation_id})
 
 if __name__ == "__main__":
     # Run MCP server (stdio)

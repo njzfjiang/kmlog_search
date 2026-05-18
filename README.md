@@ -8,7 +8,7 @@ Self-hosted chat log search using SQLite + FTS5, with a FastAPI HTTP API and Fas
 - `chat_data/import_chats.py`: extracts the newer `conversations.json` export format into `chatgpt_incremental.jsonl`.
 - `chat_data/dedupe_jsonl.py`: deduplicates incremental ChatGPT JSONL by `message_id`.
 - `import_scripts/build_sqlite_fts.py`: builds `chat_data/chat_search.db` from both JSONL sources.
-- `servers/app.py`: FastAPI API server for `/search`, `/search_by_date`, and `/healthz`.
+- `servers/app.py`: FastAPI API server for `/search`, `/search_by_date`, summary lookup endpoints, wishes, and `/healthz`.
 - `servers/search_sqlite.py`: SQLite + FTS5 backend used by the API server by default.
 - `servers/mcp_search_supabase.py` and `servers/server.py`: MCP wrappers that call the HTTP API. They can keep working as long as the API endpoints stay the same.
 
@@ -66,6 +66,10 @@ Useful environment variables:
 
 ```text
 GET  /healthz
+GET  /conversation_summary
+GET  /daily_memory_candidates
+GET  /daily_summaries
+GET  /daily_summary
 GET  /wish
 GET  /wishes
 POST /complete_wish/{id}
@@ -144,6 +148,22 @@ defaults to `["chat"]`.
   "limit": 20
 }
 ```
+
+Summary lookup endpoints:
+
+```text
+GET /daily_summary?date_key=2026-05-11
+GET /daily_summaries?start_date=2026-05-01&end_date=2026-05-18&limit=20
+GET /daily_memory_candidates?date_key=2026-05-11&status=candidate&limit=50
+GET /conversation_summary?conversation_id=<conversation_id>
+```
+
+The MCP wrappers expose matching tools:
+
+- `get_daily_summary`
+- `list_daily_summaries`
+- `get_daily_memory_candidates`
+- `get_conversation_summary`
 
 ## VPS Notes
 

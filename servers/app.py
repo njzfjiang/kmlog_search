@@ -18,6 +18,10 @@ if SEARCH_BACKEND == "supabase":
     ensure_wish_indexes = None
     complete_wish = None
     create_wish = None
+    get_conversation_summary = None
+    get_daily_summary = None
+    list_daily_memory_candidates = None
+    list_daily_summaries = None
     list_wishes = None
     update_wish_status = None
 else:
@@ -27,6 +31,10 @@ else:
             create_wish,
             ensure_search_indexes,
             ensure_wish_indexes,
+            get_conversation_summary,
+            get_daily_summary,
+            list_daily_memory_candidates,
+            list_daily_summaries,
             list_wishes,
             search_by_date,
             search_messages,
@@ -40,6 +48,10 @@ else:
             create_wish,
             ensure_search_indexes,
             ensure_wish_indexes,
+            get_conversation_summary,
+            get_daily_summary,
+            list_daily_memory_candidates,
+            list_daily_summaries,
             list_wishes,
             search_by_date,
             search_messages,
@@ -125,6 +137,17 @@ def _ensure_wishes_supported() -> None:
         or update_wish_status is None
     ):
         raise HTTPException(status_code=501, detail="Wishes are only implemented for the sqlite backend")
+
+
+def _ensure_summaries_supported() -> None:
+    if (
+        SEARCH_BACKEND != "sqlite"
+        or get_conversation_summary is None
+        or get_daily_summary is None
+        or list_daily_memory_candidates is None
+        or list_daily_summaries is None
+    ):
+        raise HTTPException(status_code=501, detail="Summaries are only implemented for the sqlite backend")
 
 
 def _validate_choice(name: str, value: Optional[str], allowed: set[str]) -> None:
@@ -213,6 +236,94 @@ def api_search_by_date(req: SearchByDateReq, x_api_key: Optional[str] = Header(d
             for r in rows
         ],
     }
+
+
+@app.get("/daily_summary")
+def api_get_daily_summary(
+    date_key: str,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_summaries_supported()
+    summary = get_daily_summary(date_key)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Daily summary not found")
+    return {"date_key": date_key, "summary": summary}
+
+
+@app.get("/daily_summaries")
+def api_list_daily_summaries(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 20,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_summaries_supported()
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": status,
+        "results": list_daily_summaries(
+            start_date=start_date,
+            end_date=end_date,
+            status=status,
+            limit=limit,
+        ),
+    }
+
+
+@app.get("/daily_memory_candidates")
+def api_list_daily_memory_candidates(
+    date_key: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_summaries_supported()
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    return {
+        "date_key": date_key,
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": status,
+        "domain": domain,
+        "function": function,
+        "q": q,
+        "results": list_daily_memory_candidates(
+            date_key=date_key,
+            start_date=start_date,
+            end_date=end_date,
+            status=status,
+            domain=domain,
+            function=function,
+            q=q,
+            limit=limit,
+        ),
+    }
+
+
+@app.get("/conversation_summary")
+def api_get_conversation_summary(
+    conversation_id: str,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_summaries_supported()
+    summary = get_conversation_summary(conversation_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Conversation summary not found")
+    return {"conversation_id": conversation_id, "summary": summary}
 
 
 @app.get("/wish")

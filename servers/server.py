@@ -85,6 +85,92 @@ async def search_kmlog_by_date(
     return result
 
 @mcp.tool
+async def get_daily_summary(date_key: str) -> dict:
+    """
+    读取某一天的完整 daily summary。
+
+    参数:
+        date_key: 日期，格式 YYYY-MM-DD
+    """
+    return await _call_api("/daily_summary", {"date_key": date_key}, method="GET")
+
+@mcp.tool
+async def list_daily_summaries(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 20
+) -> dict:
+    """
+    列出 daily summaries，可按日期范围和状态过滤。
+
+    参数:
+        start_date: 可选，开始日期 YYYY-MM-DD
+        end_date: 可选，结束日期 YYYY-MM-DD
+        status: 可选，如 "completed"
+        limit: 返回数量，默认 20
+    """
+    payload = {"limit": limit}
+    if start_date:
+        payload["start_date"] = start_date
+    if end_date:
+        payload["end_date"] = end_date
+    if status:
+        payload["status"] = status
+    return await _call_api("/daily_summaries", payload, method="GET")
+
+@mcp.tool
+async def get_daily_memory_candidates(
+    date_key: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50
+) -> dict:
+    """
+    读取 daily summary 生成的 suggested memory/summary candidates。
+
+    参数:
+        date_key: 可选，单日 YYYY-MM-DD
+        start_date: 可选，开始日期 YYYY-MM-DD
+        end_date: 可选，结束日期 YYYY-MM-DD
+        status: 可选，如 "candidate"
+        domain: 可选，按 domain 过滤
+        function: 可选，按 function 过滤
+        q: 可选，在 label/evidence 中搜索
+        limit: 返回数量，默认 50
+    """
+    payload = {"limit": limit}
+    if date_key:
+        payload["date_key"] = date_key
+    if start_date:
+        payload["start_date"] = start_date
+    if end_date:
+        payload["end_date"] = end_date
+    if status:
+        payload["status"] = status
+    if domain:
+        payload["domain"] = domain
+    if function:
+        payload["function"] = function
+    if q:
+        payload["q"] = q
+    return await _call_api("/daily_memory_candidates", payload, method="GET")
+
+@mcp.tool
+async def get_conversation_summary(conversation_id: str) -> dict:
+    """
+    读取某个 conversation_id 的 rolling conversation summary。
+
+    参数:
+        conversation_id: 会话 ID
+    """
+    return await _call_api("/conversation_summary", {"conversation_id": conversation_id}, method="GET")
+
+@mcp.tool
 async def get_wish(
     wish_id: Optional[int] = None,
     owner: Optional[str] = None,

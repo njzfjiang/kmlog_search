@@ -83,6 +83,147 @@ def _wish_row_to_dict(row) -> dict:
     }
 
 
+def _row_to_dict(row) -> dict:
+    return {key: row[key] for key in row.keys()}
+
+
+def get_daily_summary(date_key: str) -> dict | None:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        row = cursor.execute("""
+            SELECT date_key, summary, updated_at, version, last_message_id, status, error_text
+            FROM daily_summaries
+            WHERE date_key = ?
+        """, (date_key,)).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_daily_summaries(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clauses = []
+        params = []
+        if start_date:
+            clauses.append("date_key >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("date_key <= ?")
+            params.append(end_date)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = cursor.execute(f"""
+            SELECT date_key, summary, updated_at, version, last_message_id, status, error_text
+            FROM daily_summaries
+            {where_sql}
+            ORDER BY date_key DESC
+            LIMIT ?
+        """, params).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def list_daily_memory_candidates(
+    date_key: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    status: str | None = None,
+    domain: str | None = None,
+    function: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clauses = []
+        params = []
+        if date_key:
+            clauses.append("date_key = ?")
+            params.append(date_key)
+        if start_date:
+            clauses.append("date_key >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("date_key <= ?")
+            params.append(end_date)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if domain:
+            clauses.append("domain = ?")
+            params.append(domain)
+        if function:
+            clauses.append("function = ?")
+            params.append(function)
+        if q:
+            like_query = f"%{q}%"
+            clauses.append("(label LIKE ? OR evidence LIKE ?)")
+            params.extend([like_query, like_query])
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = cursor.execute(f"""
+            SELECT
+                id,
+                date_key,
+                summary_version,
+                label,
+                evidence,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                confidence,
+                source_message_ids_json,
+                status,
+                metadata_json,
+                created_at
+            FROM daily_memory_candidates
+            {where_sql}
+            ORDER BY date_key DESC, importance DESC, id ASC
+            LIMIT ?
+        """, params).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_conversation_summary(conversation_id: str) -> dict | None:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        row = cursor.execute("""
+            SELECT
+                conversation_id,
+                summary,
+                updated_at,
+                version,
+                last_message_id,
+                status,
+                error_text
+            FROM conversation_summaries
+            WHERE conversation_id = ?
+        """, (conversation_id,)).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def create_wish(
     owner: str,
     scope: str,
