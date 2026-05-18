@@ -33,10 +33,13 @@ function headers() {
 }
 
 async function apiFetch(path, options = {}) {
-  const response = await fetch(path, {
+  const requestPath = addCacheBuster(path, options.method || "GET");
+  const response = await fetch(requestPath, {
     ...options,
+    cache: "no-store",
     headers: {
       ...headers(),
+      "Cache-Control": "no-cache",
       ...(options.headers || {}),
     },
   });
@@ -44,13 +47,19 @@ async function apiFetch(path, options = {}) {
   if (!contentType.includes("application/json")) {
     const body = await response.text();
     const preview = body.replace(/\s+/g, " ").slice(0, 120);
-    throw new Error(`Expected JSON from ${path}, got ${response.status} ${contentType}: ${preview}`);
+    throw new Error(`Expected JSON from ${requestPath}, got ${response.status} ${contentType}: ${preview}`);
   }
   const body = await response.json();
   if (!response.ok) {
     throw new Error(body.detail || `${response.status} ${response.statusText}`);
   }
   return body;
+}
+
+function addCacheBuster(path, method) {
+  if (String(method).toUpperCase() !== "GET") return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}_=${Date.now()}`;
 }
 
 function wishQuery() {
