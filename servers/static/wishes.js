@@ -25,7 +25,7 @@ const emptyState = document.querySelector("#emptyState");
 apiToken.value = state.token;
 
 function headers() {
-  const out = { "Content-Type": "application/json" };
+  const out = { "Accept": "application/json", "Content-Type": "application/json" };
   if (state.token) {
     out["X-API-Key"] = state.token;
   }
@@ -40,11 +40,17 @@ async function apiFetch(path, options = {}) {
       ...(options.headers || {}),
     },
   });
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    const preview = body.replace(/\s+/g, " ").slice(0, 120);
+    throw new Error(`Expected JSON from ${path}, got ${response.status} ${contentType}: ${preview}`);
+  }
+  const body = await response.json();
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `${response.status} ${response.statusText}`);
   }
-  return response.json();
+  return body;
 }
 
 function wishQuery() {
