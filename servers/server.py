@@ -171,6 +171,43 @@ async def get_conversation_summary(conversation_id: str) -> dict:
     return await _call_api("/conversation_summary", {"conversation_id": conversation_id}, method="GET")
 
 @mcp.tool
+async def get_core_anchors(
+    anchor_key: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    status: Optional[str] = "active",
+    q: Optional[str] = None,
+    limit: int = 20
+) -> dict:
+    """
+    读取 Core Anchors，用于 boot/context injection 的短复位句。
+
+    参数:
+        anchor_key: 可选，精确读取某个 anchor
+        function: 可选，如 "boot_core"、"soothe_panic"、"boot_nice_to_have"
+        primary_mother: 可选，A-H
+        secondary_mother: 可选，A-H
+        status: 可选，默认 "active"；传空字符串可查询所有状态
+        q: 可选，在 key/title/content/evidence 中搜索
+        limit: 返回数量，默认 20
+    """
+    payload = {"limit": limit}
+    if anchor_key:
+        payload["anchor_key"] = anchor_key
+    if function:
+        payload["function"] = function
+    if primary_mother:
+        payload["primary_mother"] = primary_mother
+    if secondary_mother:
+        payload["secondary_mother"] = secondary_mother
+    if status is not None:
+        payload["status"] = status
+    if q:
+        payload["q"] = q
+    return await _call_api("/core_anchors", payload, method="GET")
+
+@mcp.tool
 async def get_wish(
     wish_id: Optional[int] = None,
     owner: Optional[str] = None,

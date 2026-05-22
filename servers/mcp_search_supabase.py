@@ -121,6 +121,32 @@ async def get_conversation_summary(conversation_id: str) -> Dict[str, Any]:
     """Read the rolling summary for one conversation_id."""
     return await _get("/conversation_summary", {"conversation_id": conversation_id})
 
+@mcp.tool()
+async def get_core_anchors(
+    anchor_key: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    status: Optional[str] = "active",
+    q: Optional[str] = None,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Read Core Anchors for boot/context injection."""
+    params: Dict[str, Any] = {"limit": int(limit)}
+    if anchor_key:
+        params["anchor_key"] = anchor_key
+    if function:
+        params["function"] = function
+    if primary_mother:
+        params["primary_mother"] = primary_mother
+    if secondary_mother:
+        params["secondary_mother"] = secondary_mother
+    if status is not None:
+        params["status"] = status
+    if q:
+        params["q"] = q
+    return await _get("/core_anchors", params)
+
 if __name__ == "__main__":
     # Run MCP server (stdio)
     mcp.run()

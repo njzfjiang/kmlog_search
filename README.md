@@ -35,6 +35,55 @@ and writes:
 
 - `chat_data/chat_search.db`
 
+## Import Core Anchors
+
+Core Anchors are short, high-signal reset sentences for context injection. They
+live in a separate `core_anchors` table instead of `messages`, because they are
+curated boot material rather than chat history.
+
+```powershell
+python import_scripts\import_core_anchors.py --dry-run
+python import_scripts\import_core_anchors.py
+```
+
+By default the importer reads:
+
+```text
+C:\Users\ellat\Documents\KM-backup\Kai-Mei-Memory-Vault\Core Anchors V0.1.md
+```
+
+and writes:
+
+```text
+chat_data\chat_search_rebuilt.db
+```
+
+The import is idempotent: rows are upserted by `anchor_key`, so rerunning the
+script updates existing anchors instead of creating duplicates.
+
+Recommended retrieval shape:
+
+- Boot context: select `status='active'`, `function='boot_core'`, ordered by
+  `priority ASC`.
+- Panic/grounding context: select `function='soothe_panic'`, ordered by
+  `priority ASC`.
+- Nice-to-have context: select `function='boot_nice_to_have'` only when there is
+  spare context budget.
+- Keyword search should be auxiliary. The main selector should stay
+  deterministic by `function`, `status`, and `priority`.
+
+Core Anchors can also be read through the API and MCP wrapper:
+
+```text
+GET /core_anchors?function=boot_core&limit=8
+GET /core_anchors?function=soothe_panic&limit=8
+GET /core_anchors?q=戒指&limit=5
+```
+
+The MCP tool is:
+
+- `get_core_anchors`
+
 During import, rows that do not already have `kind` are auto-classified with a
 small heuristic:
 
@@ -67,6 +116,7 @@ Useful environment variables:
 ```text
 GET  /healthz
 GET  /conversation_summary
+GET  /core_anchors
 GET  /daily_memory_candidates
 GET  /daily_summaries
 GET  /daily_summary

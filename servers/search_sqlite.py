@@ -224,6 +224,71 @@ def get_conversation_summary(conversation_id: str) -> dict | None:
         conn.close()
 
 
+def list_core_anchors(
+    anchor_key: str | None = None,
+    function: str | None = None,
+    primary_mother: str | None = None,
+    secondary_mother: str | None = None,
+    status: str | None = "active",
+    q: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clauses = []
+        params = []
+        if anchor_key:
+            clauses.append("anchor_key = ?")
+            params.append(anchor_key)
+        if function:
+            clauses.append("function = ?")
+            params.append(function)
+        if primary_mother:
+            clauses.append("primary_mother = ?")
+            params.append(primary_mother)
+        if secondary_mother:
+            clauses.append("secondary_mother = ?")
+            params.append(secondary_mother)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if q:
+            like_query = f"%{q}%"
+            clauses.append("(anchor_key LIKE ? OR title LIKE ? OR content LIKE ? OR evidence LIKE ?)")
+            params.extend([like_query, like_query, like_query, like_query])
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = cursor.execute(f"""
+            SELECT
+                id,
+                anchor_key,
+                title,
+                content,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                priority,
+                status,
+                source_anchor_ids,
+                source_dates,
+                evidence,
+                created_at,
+                updated_at,
+                metadata_json
+            FROM core_anchors
+            {where_sql}
+            ORDER BY priority ASC, importance DESC, id ASC
+            LIMIT ?
+        """, params).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def create_wish(
     owner: str,
     scope: str,

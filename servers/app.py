@@ -21,6 +21,7 @@ if SEARCH_BACKEND == "supabase":
     get_conversation_summary = None
     get_daily_summary = None
     list_daily_memory_candidates = None
+    list_core_anchors = None
     list_daily_summaries = None
     list_wishes = None
     update_wish_status = None
@@ -33,6 +34,7 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
             list_wishes,
@@ -50,6 +52,7 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
             list_wishes,
@@ -148,6 +151,11 @@ def _ensure_summaries_supported() -> None:
         or list_daily_summaries is None
     ):
         raise HTTPException(status_code=501, detail="Summaries are only implemented for the sqlite backend")
+
+
+def _ensure_core_anchors_supported() -> None:
+    if SEARCH_BACKEND != "sqlite" or list_core_anchors is None:
+        raise HTTPException(status_code=501, detail="Core anchors are only implemented for the sqlite backend")
 
 
 def _validate_choice(name: str, value: Optional[str], allowed: set[str]) -> None:
@@ -324,6 +332,46 @@ def api_get_conversation_summary(
     if summary is None:
         raise HTTPException(status_code=404, detail="Conversation summary not found")
     return {"conversation_id": conversation_id, "summary": summary}
+
+
+@app.get("/core_anchors")
+def api_list_core_anchors(
+    anchor_key: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    status: Optional[str] = "active",
+    q: Optional[str] = None,
+    limit: int = 20,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_core_anchors_supported()
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    try:
+        results = list_core_anchors(
+            anchor_key=anchor_key,
+            function=function,
+            primary_mother=primary_mother,
+            secondary_mother=secondary_mother,
+            status=status,
+            q=q,
+            limit=limit,
+        )
+    except Exception as exc:
+        if "core_anchors" in str(exc):
+            raise HTTPException(status_code=501, detail="Core anchors table is not available") from exc
+        raise
+    return {
+        "anchor_key": anchor_key,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "status": status,
+        "q": q,
+        "results": results,
+    }
 
 
 @app.get("/wish")
