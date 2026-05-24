@@ -1,13 +1,33 @@
 import os
+from pathlib import Path
 from typing import Optional, Any, Dict
 import httpx
 
 # If you're already using FastMCP, this should match your health MCP style.
 # pip install fastmcp
 from fastmcp import FastMCP
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
 
-BASE_URL = os.getenv("KMLOG_SEARCH_BASE_URL", "https://wm.511388.xyz").rstrip("/")
-API_TOKEN = os.getenv("KMLOG_SEARCH_API_TOKEN", "")  # same as SEARCH_API_TOKEN on server
+SERVER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SERVER_DIR.parent
+if load_dotenv is not None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(SERVER_DIR / ".env")
+
+BASE_URL = (
+    os.getenv("KMLOG_SEARCH_BASE_URL")
+    or os.getenv("KMLOG_BASE_URL")
+    or "https://wm.511388.xyz"
+).rstrip("/")
+API_TOKEN = (
+    os.getenv("KMLOG_SEARCH_API_TOKEN")
+    or os.getenv("KMLOG_API_KEY")
+    or os.getenv("SEARCH_API_TOKEN")
+    or ""
+)
 
 mcp = FastMCP("kmlog_search")
 
@@ -115,6 +135,34 @@ async def get_daily_memory_candidates(
     if q:
         params["q"] = q
     return await _get("/daily_memory_candidates", params)
+
+@mcp.tool()
+async def get_weekly_memory_candidates(
+    start_date: str,
+    end_date: str,
+    status: Optional[str] = "candidate",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 100,
+    raw_limit: int = 1000,
+) -> Dict[str, Any]:
+    """Read weekly memory candidates grouped by a conservative dedupe key."""
+    params: Dict[str, Any] = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "limit": int(limit),
+        "raw_limit": int(raw_limit),
+    }
+    if status is not None:
+        params["status"] = status
+    if domain:
+        params["domain"] = domain
+    if function:
+        params["function"] = function
+    if q:
+        params["q"] = q
+    return await _get("/weekly_memory_candidates", params)
 
 @mcp.tool()
 async def get_conversation_summary(conversation_id: str) -> Dict[str, Any]:

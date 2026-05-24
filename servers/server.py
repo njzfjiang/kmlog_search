@@ -2,15 +2,36 @@
 import os
 import httpx
 import sys
+from pathlib import Path
 from fastmcp import FastMCP
 from typing import Optional, List
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
+SERVER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SERVER_DIR.parent
+if load_dotenv is not None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(SERVER_DIR / ".env")
 
 # 从环境变量读取配置
-API_BASE_URL = os.getenv("KMLOG_API_URL", "http://127.0.0.1:8013")
-API_KEY = os.getenv("KMLOG_API_KEY", "")
+API_BASE_URL = (
+    os.getenv("KMLOG_API_URL")
+    or os.getenv("KMLOG_BASE_URL")
+    or os.getenv("KMLOG_SEARCH_BASE_URL")
+    or "http://127.0.0.1:8013"
+).rstrip("/")
+API_KEY = (
+    os.getenv("KMLOG_API_KEY")
+    or os.getenv("KMLOG_SEARCH_API_TOKEN")
+    or os.getenv("SEARCH_API_TOKEN")
+    or ""
+)
 
 if not API_KEY:
-    print("Warning: KMLOG_API_KEY not set", file=sys.stderr)
+    print("Warning: KMLOG_API_KEY/KMLOG_SEARCH_API_TOKEN/SEARCH_API_TOKEN not set", file=sys.stderr)
 
 mcp = FastMCP("KMLog Search")
 
@@ -159,6 +180,46 @@ async def get_daily_memory_candidates(
     if q:
         payload["q"] = q
     return await _call_api("/daily_memory_candidates", payload, method="GET")
+
+@mcp.tool
+async def get_weekly_memory_candidates(
+    start_date: str,
+    end_date: str,
+    status: Optional[str] = "candidate",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 100,
+    raw_limit: int = 1000
+) -> dict:
+    """
+    读取一周 memory candidates，并按保守 dedupe key 分组。
+
+    参数:
+        start_date: 开始日期 YYYY-MM-DD
+        end_date: 结束日期 YYYY-MM-DD
+        status: 可选，默认 "candidate"
+        domain: 可选，按 domain 过滤
+        function: 可选，按 function 过滤
+        q: 可选，在 label/evidence 中搜索
+        limit: 返回去重分组数量，默认 100
+        raw_limit: 去重前最多读取数量，默认 1000
+    """
+    payload = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "limit": limit,
+        "raw_limit": raw_limit,
+    }
+    if status is not None:
+        payload["status"] = status
+    if domain:
+        payload["domain"] = domain
+    if function:
+        payload["function"] = function
+    if q:
+        payload["q"] = q
+    return await _call_api("/weekly_memory_candidates", payload, method="GET")
 
 @mcp.tool
 async def get_conversation_summary(conversation_id: str) -> dict:

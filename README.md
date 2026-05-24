@@ -104,6 +104,12 @@ Open the local wishes page at:
 http://127.0.0.1:8013/wishes
 ```
 
+Open the weekly memory candidate review page at:
+
+```text
+http://127.0.0.1:8013/memory_week
+```
+
 Useful environment variables:
 
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
@@ -120,6 +126,8 @@ GET  /core_anchors
 GET  /daily_memory_candidates
 GET  /daily_summaries
 GET  /daily_summary
+GET  /memory_week
+GET  /weekly_memory_candidates
 GET  /wish
 GET  /wishes
 POST /complete_wish/{id}
@@ -205,14 +213,22 @@ Summary lookup endpoints:
 GET /daily_summary?date_key=2026-05-11
 GET /daily_summaries?start_date=2026-05-01&end_date=2026-05-18&limit=20
 GET /daily_memory_candidates?date_key=2026-05-11&status=candidate&limit=50
+GET /weekly_memory_candidates?start_date=2026-05-18&end_date=2026-05-24&status=candidate&limit=100
 GET /conversation_summary?conversation_id=<conversation_id>
 ```
+
+`/weekly_memory_candidates` reads the same daily candidate table, then returns
+deduped weekly groups. The dedupe key is conservative: domain, function,
+primary mother, secondary mother, normalized label, and a short normalized
+evidence prefix. Each group includes a best `canonical` candidate, source
+candidate IDs, source dates, duplicate count, labels, and evidence snippets.
 
 The MCP wrappers expose matching tools:
 
 - `get_daily_summary`
 - `list_daily_summaries`
 - `get_daily_memory_candidates`
+- `get_weekly_memory_candidates`
 - `get_conversation_summary`
 
 ## VPS Notes
@@ -243,6 +259,33 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+```
+
+If KMLog shares a host under a subpath such as `/kmlog/`, strip that prefix
+when proxying to Uvicorn:
+
+```nginx
+location /kmlog/ {
+    proxy_pass http://127.0.0.1:8013/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+With that shape, public URLs look like:
+
+```text
+https://example.com/kmlog/memory_week
+https://example.com/kmlog/wishes
+```
+
+Set MCP clients to the same public base path:
+
+```text
+KMLOG_BASE_URL=https://example.com/kmlog
+KMLOG_API_KEY=<same value as SEARCH_API_TOKEN>
 ```
 
 Create the password file with:

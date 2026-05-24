@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Week</title>
+  <link rel="stylesheet" href="static/memory_week.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">KMLog</p>
+        <h1>Memory Week</h1>
+      </div>
+      <label class="token-field">
+        <span>Token</span>
+        <input id="apiToken" type="password" autocomplete="off">
+      </label>
+    </header>
+
+    <section class="filters" aria-label="Weekly memory filters">
+      <label class="field">
+        <span>Start</span>
+        <input id="startDate" type="date">
+      </label>
+      <label class="field">
+        <span>End</span>
+        <input id="endDate" type="date">
+      </label>
+      <label class="field">
+        <span>Status</span>
+        <select id="statusFilter">
+          <option value="candidate">candidate</option>
+          <option value="">all</option>
+          <option value="accepted">accepted</option>
+          <option value="rejected">rejected</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Domain</span>
+        <input id="domainFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field">
+        <span>Function</span>
+        <input id="functionFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field wide">
+        <span>Search</span>
+        <input id="keywordFilter" type="search" placeholder="Label or evidence">
+      </label>
+      <button id="loadButton" class="primary-button" type="button">Load</button>
+      <button id="exportButton" class="secondary-button" type="button">Export</button>
+    </section>
+
+    <section class="stats-grid" aria-live="polite">
+      <article class="stat-card">
+        <span>Raw</span>
+        <strong id="rawCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Deduped</span>
+        <strong id="groupCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Keep</span>
+        <strong id="keepCount">0</strong>
+      </article>
+      <article class="stat-card">
+        <span>Drop</span>
+        <strong id="dropCount">0</strong>
+      </article>
+    </section>
+
+    <section class="visual-grid">
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Domains</h2>
+        </div>
+        <div id="domainBars" class="bars"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Functions</h2>
+        </div>
+        <div id="functionBars" class="bars"></div>
+      </div>
+    </section>
+
+    <section class="list-shell">
+      <div class="panel-heading">
+        <h2>Candidates</h2>
+        <p id="message" role="status"></p>
+      </div>
+      <div id="candidateList" class="candidate-list"></div>
+      <p id="emptyState" class="empty-state" hidden>No candidates.</p>
+    </section>
+
+    <dialog id="exportDialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <h2>Weekly Markdown</h2>
+          <button class="icon-button" value="close" aria-label="Close" type="submit">x</button>
+        </div>
+        <textarea id="exportText" rows="16" readonly></textarea>
+      </form>
+    </dialog>
+  </main>
+
+  <script src="static/memory_week.js"></script>
+</body>
+</html>

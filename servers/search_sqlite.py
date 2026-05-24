@@ -5,10 +5,22 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = PROJECT_ROOT / "chat_data" / "chat_search.db"
-DB_PATH = Path(os.getenv("KMLOG_SQLITE_DB", str(DEFAULT_DB_PATH)))
+if load_dotenv is not None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(PROJECT_ROOT / "servers" / ".env")
+
+_DB_PATH_VALUE = os.getenv("KMLOG_SQLITE_DB", str(DEFAULT_DB_PATH))
+DB_PATH = Path(_DB_PATH_VALUE)
+if not DB_PATH.is_absolute():
+    DB_PATH = PROJECT_ROOT / DB_PATH
 
 
 def get_connection():
@@ -85,6 +97,43 @@ def _wish_row_to_dict(row) -> dict:
 
 def _row_to_dict(row) -> dict:
     return {key: row[key] for key in row.keys()}
+
+
+def _score_value(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _dedupe_text(value: str | None) -> str:
+    compact = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", compact)
+
+
+def _candidate_dedupe_key(candidate: dict) -> tuple[str, str, str, str, str, str]:
+    return (
+        candidate.get("domain") or "",
+        candidate.get("function") or "",
+        candidate.get("primary_mother") or "",
+        candidate.get("secondary_mother") or "",
+        _dedupe_text(candidate.get("label")),
+        _dedupe_text(candidate.get("evidence"))[:120],
+    )
+
+
+def _best_candidate(existing: dict, candidate: dict) -> dict:
+    existing_score = (
+        _score_value(existing.get("importance")),
+        _score_value(existing.get("confidence")),
+        existing.get("date_key") or "",
+    )
+    candidate_score = (
+        _score_value(candidate.get("importance")),
+        _score_value(candidate.get("confidence")),
+        candidate.get("date_key") or "",
+    )
+    return candidate if candidate_score > existing_score else existing
 
 
 def get_daily_summary(date_key: str) -> dict | None:
@@ -201,6 +250,75 @@ def list_daily_memory_candidates(
         return [_row_to_dict(row) for row in rows]
     finally:
         conn.close()
+
+
+def list_weekly_memory_candidates(
+    start_date: str,
+    end_date: str,
+    status: str | None = "candidate",
+    domain: str | None = None,
+    function: str | None = None,
+    q: str | None = None,
+    limit: int = 100,
+    raw_limit: int = 1000,
+) -> dict:
+    raw_candidates = list_daily_memory_candidates(
+        start_date=start_date,
+        end_date=end_date,
+        status=status,
+        domain=domain,
+        function=function,
+        q=q,
+        limit=raw_limit,
+    )
+
+    groups = {}
+    for candidate in raw_candidates:
+        key = _candidate_dedupe_key(candidate)
+        group = groups.get(key)
+        if group is None:
+            groups[key] = {
+                "dedupe_key": "|".join(key),
+                "canonical": candidate,
+                "candidate_ids": [candidate["id"]],
+                "date_keys": [candidate["date_key"]],
+                "labels": [candidate["label"]],
+                "evidence": [candidate["evidence"]],
+                "count": 1,
+            }
+            continue
+
+        group["canonical"] = _best_candidate(group["canonical"], candidate)
+        group["candidate_ids"].append(candidate["id"])
+        if candidate["date_key"] not in group["date_keys"]:
+            group["date_keys"].append(candidate["date_key"])
+        if candidate["label"] not in group["labels"]:
+            group["labels"].append(candidate["label"])
+        if candidate["evidence"] and candidate["evidence"] not in group["evidence"]:
+            group["evidence"].append(candidate["evidence"])
+        group["count"] += 1
+
+    deduped = list(groups.values())
+    for group in deduped:
+        group["date_keys"].sort(reverse=True)
+        group["labels"] = group["labels"][:5]
+        group["evidence"] = group["evidence"][:5]
+
+    deduped.sort(
+        key=lambda group: (
+            group["count"],
+            _score_value(group["canonical"].get("importance")),
+            _score_value(group["canonical"].get("confidence")),
+            group["canonical"].get("date_key") or "",
+        ),
+        reverse=True,
+    )
+
+    return {
+        "total_raw": len(raw_candidates),
+        "total_groups": len(deduped),
+        "groups": deduped[:limit],
+    }
 
 
 def get_conversation_summary(conversation_id: str) -> dict | None:

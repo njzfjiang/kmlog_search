@@ -6,6 +6,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
+SERVER_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SERVER_DIR.parent
+if load_dotenv is not None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(SERVER_DIR / ".env")
+
 SEARCH_BACKEND = os.getenv("KMLOG_SEARCH_BACKEND", "sqlite").strip().lower()
 
 if SEARCH_BACKEND == "supabase":
@@ -23,6 +34,7 @@ if SEARCH_BACKEND == "supabase":
     list_daily_memory_candidates = None
     list_core_anchors = None
     list_daily_summaries = None
+    list_weekly_memory_candidates = None
     list_wishes = None
     update_wish_status = None
 else:
@@ -37,6 +49,7 @@ else:
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
+            list_weekly_memory_candidates,
             list_wishes,
             search_by_date,
             search_messages,
@@ -55,6 +68,7 @@ else:
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
+            list_weekly_memory_candidates,
             list_wishes,
             search_by_date,
             search_messages,
@@ -63,7 +77,6 @@ else:
 
 APP_TOKEN = os.getenv("SEARCH_API_TOKEN", "")
 DISABLE_DOCS = os.getenv("KMLOG_DISABLE_DOCS", "").strip().lower() in {"1", "true", "yes"}
-SERVER_DIR = Path(__file__).resolve().parent
 STATIC_DIR = SERVER_DIR / "static"
 
 app = FastAPI(
@@ -149,6 +162,7 @@ def _ensure_summaries_supported() -> None:
         or get_daily_summary is None
         or list_daily_memory_candidates is None
         or list_daily_summaries is None
+        or list_weekly_memory_candidates is None
     ):
         raise HTTPException(status_code=501, detail="Summaries are only implemented for the sqlite backend")
 
@@ -179,6 +193,11 @@ def robots_txt():
 @app.get("/wishes", response_class=HTMLResponse)
 def wishes_page():
     return (STATIC_DIR / "wishes.html").read_text(encoding="utf-8")
+
+
+@app.get("/memory_week", response_class=HTMLResponse)
+def memory_week_page():
+    return (STATIC_DIR / "memory_week.html").read_text(encoding="utf-8")
 
 
 @app.post("/ensure_indexes")
@@ -318,6 +337,45 @@ def api_list_daily_memory_candidates(
             q=q,
             limit=limit,
         ),
+    }
+
+
+@app.get("/weekly_memory_candidates")
+def api_list_weekly_memory_candidates(
+    start_date: str,
+    end_date: str,
+    status: Optional[str] = "candidate",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 100,
+    raw_limit: int = 1000,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_summaries_supported()
+    if limit < 1 or limit > 300:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 300")
+    if raw_limit < 1 or raw_limit > 2000:
+        raise HTTPException(status_code=400, detail="raw_limit must be between 1 and 2000")
+    weekly = list_weekly_memory_candidates(
+        start_date=start_date,
+        end_date=end_date,
+        status=status,
+        domain=domain,
+        function=function,
+        q=q,
+        limit=limit,
+        raw_limit=raw_limit,
+    )
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": status,
+        "domain": domain,
+        "function": function,
+        "q": q,
+        **weekly,
     }
 
 

@@ -130,7 +130,7 @@ function renderWishes(wishes) {
 
 async function loadWishes() {
   try {
-    const data = await apiFetch(`/wish?${wishQuery()}`, { method: "GET" });
+    const data = await apiFetch(`wish?${wishQuery()}`, { method: "GET" });
     renderWishes(data.results || []);
     formMessage.textContent = "";
   } catch (error) {
@@ -155,7 +155,7 @@ async function addWish(event) {
   };
 
   try {
-    await apiFetch("/wish", {
+    await apiFetch("wish", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -170,7 +170,7 @@ async function addWish(event) {
 
 async function setStatus(id, status) {
   try {
-    await apiFetch(`/wish/${id}/status`, {
+    await apiFetch(`wish/${id}/status`, {
       method: "POST",
       body: JSON.stringify({ status }),
     });
