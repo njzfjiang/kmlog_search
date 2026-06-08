@@ -269,6 +269,65 @@ async def get_core_anchors(
     return await _call_api("/core_anchors", payload, method="GET")
 
 @mcp.tool
+async def get_mother_toc() -> dict:
+    """
+    读取 mother markdown 记忆库目录。
+    """
+    return await _call_api("/memory/toc", {}, method="GET")
+
+@mcp.tool
+async def get_mother_section(path: str) -> dict:
+    """
+    按路径读取 mother markdown 记忆库 section。
+
+    参数:
+        path: section path，如 "F.2"
+    """
+    return await _call_api("/memory/section", {"path": path}, method="GET")
+
+@mcp.tool
+async def search_mother_memory(
+    q: str,
+    scope: Optional[str] = None,
+    limit: int = 20
+) -> dict:
+    """
+    轻量搜索 mother markdown 记忆库，不做 semantic RAG。
+
+    参数:
+        q: 搜索关键词
+        scope: 可选路径前缀，如 "F"
+        limit: 返回数量，默认 20
+    """
+    payload = {"q": q, "limit": limit}
+    if scope:
+        payload["scope"] = scope
+    return await _call_api("/memory/search", payload, method="GET")
+
+@mcp.tool
+async def route_mother_memory(
+    query: str,
+    mode: Optional[str] = None,
+    task_hint: Optional[str] = None,
+    limit: int = 8
+) -> dict:
+    """
+    Route a user/task query to likely mother memory sections without injection.
+
+    参数:
+        query: 当前问题或检索意图
+        mode: 可选 intent，如 "health"、"panic"、"infra"、"ritual"、"setting"、"profile"、"rules"
+        task_hint: 可选任务提示，会参与 deterministic keyword routing
+        limit: 最多返回 route 数量，默认 8
+    """
+    payload = {"query": query, "limit": limit}
+    if mode:
+        payload["mode"] = mode
+    if task_hint:
+        payload["task_hint"] = task_hint
+    return await _call_api("/memory/route", payload)
+
+@mcp.tool
 async def get_wish(
     wish_id: Optional[int] = None,
     owner: Optional[str] = None,

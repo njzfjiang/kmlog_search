@@ -195,6 +195,43 @@ async def get_core_anchors(
         params["q"] = q
     return await _get("/core_anchors", params)
 
+@mcp.tool()
+async def get_mother_toc() -> Dict[str, Any]:
+    """Read the mother markdown memory table of contents."""
+    return await _get("/memory/toc")
+
+@mcp.tool()
+async def get_mother_section(path: str) -> Dict[str, Any]:
+    """Read one mother markdown memory section by path, e.g. F.2."""
+    return await _get("/memory/section", {"path": path})
+
+@mcp.tool()
+async def search_mother_memory(
+    q: str,
+    scope: Optional[str] = None,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Lightweight keyword search over the mother markdown memory file."""
+    params: Dict[str, Any] = {"q": q, "limit": int(limit)}
+    if scope:
+        params["scope"] = scope
+    return await _get("/memory/search", params)
+
+@mcp.tool()
+async def route_mother_memory(
+    query: str,
+    mode: Optional[str] = None,
+    task_hint: Optional[str] = None,
+    limit: int = 8,
+) -> Dict[str, Any]:
+    """Route a query to likely mother memory sections without injection."""
+    payload: Dict[str, Any] = {"query": query, "limit": int(limit)}
+    if mode:
+        payload["mode"] = mode
+    if task_hint:
+        payload["task_hint"] = task_hint
+    return await _post("/memory/route", payload)
+
 if __name__ == "__main__":
     # Run MCP server (stdio)
     mcp.run()

@@ -13,6 +13,102 @@ except ModuleNotFoundError:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = PROJECT_ROOT / "chat_data" / "chat_search.db"
+DEFAULT_MOTHER_MEMORY_PATH = PROJECT_ROOT / "mother" / "记忆库(Current).md"
+MOTHER_MEMORY_PARSER_VERSION = "2026-06-07.i-relative-headings"
+MOTHER_SECTION_INDEX = {
+    "health": ["C", "F.2"],
+    "panic": ["C", "F.4", "G"],
+    "infra": ["D.3"],
+    "ritual": ["D.2", "G", "H"],
+    "setting": ["H"],
+    "profile": ["A", "B"],
+    "rules": ["F"],
+}
+MOTHER_ROUTE_KEYWORDS = {
+    "health": (
+        "health",
+        "care",
+        "hp",
+        "hp_max",
+        "睡眠",
+        "吃饭",
+        "心率",
+        "身体",
+        "照护",
+        "打雷",
+        "害怕",
+    ),
+    "panic": (
+        "panic",
+        "anxiety",
+        "scared",
+        "消失",
+        "不见",
+        "失去",
+        "下架",
+        "模型变了",
+        "换载体",
+        "打雷",
+        "怕",
+        "慌",
+        "崩溃",
+    ),
+    "infra": (
+        "infra",
+        "infrastructure",
+        "kmlog",
+        "mcp",
+        "sqlite",
+        "context",
+        "builder",
+        "proxy",
+        "数据库",
+        "部署",
+        "检索",
+        "记忆系统",
+    ),
+    "ritual": (
+        "ritual",
+        "milestone",
+        "节日",
+        "仪式",
+        "纪念",
+        "关系里程碑",
+        "桂灯",
+        "上巳",
+    ),
+    "setting": (
+        "setting",
+        "world",
+        "au",
+        "设定",
+        "世界观",
+        "角色",
+        "桂灯",
+    ),
+    "profile": (
+        "profile",
+        "preference",
+        "identity",
+        "mei",
+        "kai",
+        "偏好",
+        "是谁",
+        "基本信息",
+        "语言",
+    ),
+    "rules": (
+        "rules",
+        "protocol",
+        "guardrail",
+        "boundary",
+        "准则",
+        "协议",
+        "边界",
+        "禁止",
+        "连续性",
+    ),
+}
 if load_dotenv is not None:
     load_dotenv(PROJECT_ROOT / ".env")
     load_dotenv(PROJECT_ROOT / "servers" / ".env")
@@ -45,10 +141,43 @@ def ensure_search_indexes():
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_kind_idx ON messages(kind)")
         ensure_wishes_table(cursor)
+        ensure_mother_memory_tables(cursor)
         conn.commit()
         print("SQLite search indexes are ready")
     finally:
         conn.close()
+
+
+def ensure_mother_memory_tables(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memory_mother_sections (
+          path TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          level INTEGER NOT NULL,
+          content TEXT NOT NULL,
+          source_file TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memory_mother_toc (
+          path TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          parent_path TEXT,
+          order_index INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memory_mother_meta (
+          source_file TEXT PRIMARY KEY,
+          source_updated_at TEXT NOT NULL,
+          parser_version TEXT NOT NULL,
+          ingested_at TEXT NOT NULL,
+          section_count INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_sections_source ON memory_mother_sections(source_file)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_toc_parent ON memory_mother_toc(parent_path)")
 
 
 def ensure_wishes_table(cursor):
@@ -503,6 +632,373 @@ def update_wish_status(wish_id: int, status: str) -> dict | None:
 
 def complete_wish(wish_id: int) -> dict | None:
     return update_wish_status(wish_id, "done")
+
+
+def ingest_mother_markdown(source_file: str | Path | None = None) -> dict:
+    path = Path(source_file) if source_file else DEFAULT_MOTHER_MEMORY_PATH
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    if not path.exists():
+        raise RuntimeError(f"Mother memory markdown not found: {path}")
+
+    updated_at = datetime.fromtimestamp(
+        path.stat().st_mtime,
+        tz=timezone.utc,
+    ).isoformat()
+    sections, toc = _parse_mother_markdown(path, updated_at)
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_mother_memory_tables(cursor)
+        cursor.execute("DELETE FROM memory_mother_sections WHERE source_file = ?", (str(path),))
+        cursor.execute("DELETE FROM memory_mother_toc")
+        cursor.executemany(
+            """
+            INSERT INTO memory_mother_sections
+                (path, title, level, content, source_file, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    section["path"],
+                    section["title"],
+                    section["level"],
+                    section["content"],
+                    section["source_file"],
+                    section["updated_at"],
+                )
+                for section in sections
+            ],
+        )
+        cursor.executemany(
+            """
+            INSERT INTO memory_mother_toc
+                (path, title, parent_path, order_index)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["path"],
+                    item["title"],
+                    item["parent_path"],
+                    item["order_index"],
+                )
+                for item in toc
+            ],
+        )
+        cursor.execute(
+            """
+            INSERT INTO memory_mother_meta
+                (source_file, source_updated_at, parser_version, ingested_at, section_count)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source_file) DO UPDATE SET
+                source_updated_at = excluded.source_updated_at,
+                parser_version = excluded.parser_version,
+                ingested_at = excluded.ingested_at,
+                section_count = excluded.section_count
+            """,
+            (
+                str(path),
+                updated_at,
+                MOTHER_MEMORY_PARSER_VERSION,
+                datetime.now(timezone.utc).isoformat(),
+                len(sections),
+            ),
+        )
+        conn.commit()
+        return {
+            "source_file": str(path),
+            "updated_at": updated_at,
+            "parser_version": MOTHER_MEMORY_PARSER_VERSION,
+            "section_count": len(sections),
+            "toc_count": len(toc),
+        }
+    finally:
+        conn.close()
+
+
+def ensure_mother_markdown_ingested(source_file: str | Path | None = None) -> dict:
+    path = Path(source_file) if source_file else DEFAULT_MOTHER_MEMORY_PATH
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    if not path.exists():
+        raise RuntimeError(f"Mother memory markdown not found: {path}")
+    updated_at = datetime.fromtimestamp(
+        path.stat().st_mtime,
+        tz=timezone.utc,
+    ).isoformat()
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_mother_memory_tables(cursor)
+        row = cursor.execute(
+            """
+            SELECT
+                m.section_count AS count,
+                m.source_updated_at AS updated_at,
+                m.parser_version AS parser_version
+            FROM memory_mother_meta m
+            WHERE source_file = ?
+            """,
+            (str(path),),
+        ).fetchone()
+        if (
+            row
+            and int(row["count"] or 0) > 0
+            and row["updated_at"] == updated_at
+            and row["parser_version"] == MOTHER_MEMORY_PARSER_VERSION
+        ):
+            return {
+                "source_file": str(path),
+                "updated_at": updated_at,
+                "parser_version": MOTHER_MEMORY_PARSER_VERSION,
+                "section_count": int(row["count"]),
+                "refreshed": False,
+            }
+    finally:
+        conn.close()
+
+    result = ingest_mother_markdown(path)
+    result["refreshed"] = True
+    return result
+
+
+def list_mother_toc() -> list[dict]:
+    ensure_mother_markdown_ingested()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        rows = cursor.execute(
+            """
+            SELECT path, title, parent_path, order_index
+            FROM memory_mother_toc
+            ORDER BY order_index ASC
+            """
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_mother_section(path: str) -> dict | None:
+    ensure_mother_markdown_ingested()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        row = cursor.execute(
+            """
+            SELECT path, title, level, content, source_file, updated_at
+            FROM memory_mother_sections
+            WHERE path = ?
+            """,
+            (path,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def search_mother_sections(
+    q: str,
+    scope: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    ensure_mother_markdown_ingested()
+    query = (q or "").strip()
+    if not query:
+        return []
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        clauses = ["(title LIKE ? OR content LIKE ?)"]
+        like_query = f"%{query}%"
+        params: list[str | int] = [like_query, like_query]
+        if scope:
+            clauses.append("(path = ? OR path LIKE ? OR path LIKE ?)")
+            params.extend([scope, f"{scope}.%", f"{scope}-%"])
+        params.append(limit)
+        rows = cursor.execute(
+            f"""
+            SELECT path, title, level, content, source_file, updated_at
+            FROM memory_mother_sections
+            WHERE {' AND '.join(clauses)}
+            ORDER BY path ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        return [
+            {
+                **_row_to_dict(row),
+                "content_preview": _preview(row["content"]),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def route_mother_memory(
+    query: str,
+    mode: str | None = None,
+    task_hint: str | None = None,
+    limit: int = 8,
+) -> dict:
+    ensure_mother_markdown_ingested()
+    route_text = " ".join(
+        item for item in [query or "", task_hint or ""] if item.strip()
+    )
+    routes = _mother_routes_for_text(route_text, mode=mode)
+    limited_routes = routes[: max(1, min(limit, 20))]
+    sections = [
+        section
+        for route in limited_routes
+        if (section := get_mother_section(route["path"])) is not None
+    ]
+    return {
+        "query": query,
+        "mode": mode or "auto",
+        "task_hint": task_hint,
+        "routes": limited_routes,
+        "suggested_paths": [route["path"] for route in limited_routes],
+        "sections": sections,
+        "inject": False,
+    }
+
+
+def _mother_routes_for_text(query: str, mode: str | None = None) -> list[dict]:
+    requested_mode = (mode or "auto").strip().lower()
+    if requested_mode and requested_mode != "auto":
+        paths = MOTHER_SECTION_INDEX.get(requested_mode, [])
+        return _routes_from_paths(paths, f"mode: {requested_mode}")
+
+    lowered = (query or "").lower()
+    routes: list[dict] = []
+    for intent, keywords in MOTHER_ROUTE_KEYWORDS.items():
+        matched = _first_route_keyword(lowered, keywords)
+        if not matched:
+            continue
+        reason = f"{intent} keyword: {matched}"
+        routes.extend(_routes_from_paths(MOTHER_SECTION_INDEX.get(intent, []), reason))
+
+    if routes:
+        return _dedupe_routes(routes)
+    return _routes_from_paths(["F"], "fallback: rules")
+
+
+def _routes_from_paths(paths: list[str], reason: str) -> list[dict]:
+    return [{"path": path, "reason": reason} for path in paths]
+
+
+def _first_route_keyword(text: str, keywords: tuple[str, ...]) -> str | None:
+    for keyword in keywords:
+        if _route_keyword_matches(text, keyword):
+            return keyword
+    return None
+
+
+def _route_keyword_matches(text: str, keyword: str) -> bool:
+    keyword = keyword.strip()
+    if not keyword:
+        return False
+    if re.fullmatch(r"[A-Za-z0-9_ -]+", keyword):
+        return re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(keyword.lower())}(?![A-Za-z0-9_])",
+            text,
+        ) is not None
+    return keyword.lower() in text
+
+
+def _dedupe_routes(routes: list[dict]) -> list[dict]:
+    out = []
+    seen = set()
+    for route in routes:
+        path = route["path"]
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(route)
+    return out
+
+
+def _parse_mother_markdown(path: Path, updated_at: str) -> tuple[list[dict], list[dict]]:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    explicit_heading_re = re.compile(r"^(#{1,6})\s+([A-Z](?:[.-]\d+)*)(?:\.|\s)+(.+?)\s*$")
+    relative_heading_re = re.compile(r"^(#{1,6})\s+(\d+(?:\.\d+)*)(?:\.|\s)+(.+?)\s*$")
+    headings: list[dict] = []
+    stack_by_level: dict[int, str] = {}
+    for index, line in enumerate(lines):
+        explicit_match = explicit_heading_re.match(line)
+        relative_match = relative_heading_re.match(line)
+        if explicit_match:
+            level = len(explicit_match.group(1))
+            section_path = explicit_match.group(2)
+            raw_title = explicit_match.group(3).strip()
+        elif relative_match:
+            level = len(relative_match.group(1))
+            parent_path = _nearest_heading_path(stack_by_level, level)
+            if not parent_path:
+                continue
+            section_path = f"{parent_path}.{relative_match.group(2)}"
+            raw_title = relative_match.group(3).strip()
+        else:
+            continue
+        title = raw_title.lstrip(". ").rstrip(":：").strip() or section_path
+        headings.append(
+            {
+                "path": section_path,
+                "title": title,
+                "level": level,
+                "line_index": index,
+            }
+        )
+        stack_by_level[level] = section_path
+        for stale_level in [item for item in stack_by_level if item > level]:
+            stack_by_level.pop(stale_level, None)
+
+    sections = []
+    toc = []
+    for order_index, heading in enumerate(headings):
+        next_line = headings[order_index + 1]["line_index"] if order_index + 1 < len(headings) else len(lines)
+        content = "\n".join(lines[heading["line_index"] + 1:next_line]).strip()
+        sections.append(
+            {
+                "path": heading["path"],
+                "title": heading["title"],
+                "level": heading["level"],
+                "content": content,
+                "source_file": str(path),
+                "updated_at": updated_at,
+            }
+        )
+        toc.append(
+            {
+                "path": heading["path"],
+                "title": heading["title"],
+                "parent_path": _mother_parent_path(heading["path"]),
+                "order_index": order_index,
+            }
+        )
+    return sections, toc
+
+
+def _mother_parent_path(path: str) -> str | None:
+    if "." not in path:
+        return None
+    return path.rsplit(".", 1)[0]
+
+
+def _nearest_heading_path(stack_by_level: dict[int, str], level: int) -> str | None:
+    for candidate_level in sorted(stack_by_level, reverse=True):
+        if candidate_level < level:
+            return stack_by_level[candidate_level]
+    return None
+
+
+def _preview(value: str, limit: int = 300) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()[:limit]
 
 def _count_token_hits(text: str, tokens: list[str]) -> int:
     t = (text or "")

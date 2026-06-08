@@ -84,6 +84,67 @@ The MCP tool is:
 
 - `get_core_anchors`
 
+## Import Mother Markdown Memory
+
+The current mother memory file can be ingested into lightweight SQLite tables
+for exact section lookup and keyword search. This is intentionally not semantic
+RAG and does not auto-inject anything into `chat-proxy` / `context_builder`.
+
+Input:
+
+```text
+mother\记忆库(Current).md
+```
+
+Backing tables:
+
+```sql
+memory_mother_sections(path, title, level, content, source_file, updated_at)
+memory_mother_toc(path, title, parent_path, order_index)
+```
+
+The API lazily refreshes these tables when the markdown source file changes.
+HTTP endpoints:
+
+```text
+GET /memory/toc
+GET /memory/section?path=F.2
+GET /memory/search?q=canonical&scope=F
+POST /memory/route
+```
+
+MCP wrappers expose matching read-only tools:
+
+- `get_mother_toc`
+- `get_mother_section`
+- `search_mother_memory`
+- `route_mother_memory`
+
+`/memory/route` is a deterministic intent router, not RAG. It suggests section
+paths and returns matching section rows with `inject: false`:
+
+```json
+{
+  "query": "她怕打雷怎么哄",
+  "mode": "auto",
+  "task_hint": null
+}
+```
+
+The initial intent map is:
+
+```python
+{
+  "health": ["C", "F.2"],
+  "panic": ["C", "F.4", "G"],
+  "infra": ["D.3"],
+  "ritual": ["D.2", "G", "H"],
+  "setting": ["H"],
+  "profile": ["A", "B"],
+  "rules": ["F"],
+}
+```
+
 During import, rows that do not already have `kind` are auto-classified with a
 small heuristic:
 
@@ -126,11 +187,15 @@ GET  /core_anchors
 GET  /daily_memory_candidates
 GET  /daily_summaries
 GET  /daily_summary
+GET  /memory/search
+GET  /memory/section
+GET  /memory/toc
 GET  /memory_week
 GET  /weekly_memory_candidates
 GET  /wish
 GET  /wishes
 POST /complete_wish/{id}
+POST /memory/route
 POST /search
 POST /search_by_date
 POST /wish

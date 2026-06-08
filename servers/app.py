@@ -32,10 +32,14 @@ if SEARCH_BACKEND == "supabase":
     get_conversation_summary = None
     get_daily_summary = None
     list_daily_memory_candidates = None
+    list_mother_toc = None
     list_core_anchors = None
     list_daily_summaries = None
+    get_mother_section = None
+    route_mother_memory = None
     list_weekly_memory_candidates = None
     list_wishes = None
+    search_mother_sections = None
     update_wish_status = None
 else:
     try:
@@ -46,12 +50,16 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            get_mother_section,
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
+            list_mother_toc,
             list_weekly_memory_candidates,
             list_wishes,
+            route_mother_memory,
             search_by_date,
+            search_mother_sections,
             search_messages,
             update_wish_status,
         )
@@ -65,12 +73,16 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            get_mother_section,
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
+            list_mother_toc,
             list_weekly_memory_candidates,
             list_wishes,
+            route_mother_memory,
             search_by_date,
+            search_mother_sections,
             search_messages,
             update_wish_status,
         )
@@ -123,6 +135,13 @@ class SearchByDateReq(BaseModel):
     limit: int = 20
 
 
+class MemoryRouteReq(BaseModel):
+    query: str
+    mode: Optional[str] = None
+    task_hint: Optional[str] = None
+    limit: int = 8
+
+
 class WishReq(BaseModel):
     owner: str
     scope: str
@@ -170,6 +189,17 @@ def _ensure_summaries_supported() -> None:
 def _ensure_core_anchors_supported() -> None:
     if SEARCH_BACKEND != "sqlite" or list_core_anchors is None:
         raise HTTPException(status_code=501, detail="Core anchors are only implemented for the sqlite backend")
+
+
+def _ensure_mother_memory_supported() -> None:
+    if (
+        SEARCH_BACKEND != "sqlite"
+        or list_mother_toc is None
+        or get_mother_section is None
+        or search_mother_sections is None
+        or route_mother_memory is None
+    ):
+        raise HTTPException(status_code=501, detail="Mother memory is only implemented for the sqlite backend")
 
 
 def _validate_choice(name: str, value: Optional[str], allowed: set[str]) -> None:
@@ -430,6 +460,61 @@ def api_list_core_anchors(
         "q": q,
         "results": results,
     }
+
+
+@app.get("/memory/toc")
+def api_memory_toc(x_api_key: Optional[str] = Header(default=None)):
+    auth(x_api_key)
+    _ensure_mother_memory_supported()
+    return {"results": list_mother_toc()}
+
+
+@app.get("/memory/section")
+def api_memory_section(
+    path: str,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_mother_memory_supported()
+    section = get_mother_section(path)
+    if section is None:
+        raise HTTPException(status_code=404, detail="Mother memory section not found")
+    return {"path": path, "section": section}
+
+
+@app.get("/memory/search")
+def api_memory_search(
+    q: str,
+    scope: Optional[str] = None,
+    limit: int = 20,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_mother_memory_supported()
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 100")
+    return {
+        "q": q,
+        "scope": scope,
+        "results": search_mother_sections(q=q, scope=scope, limit=limit),
+    }
+
+
+@app.post("/memory/route")
+def api_memory_route(
+    req: MemoryRouteReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_mother_memory_supported()
+    if req.limit < 1 or req.limit > 20:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 20")
+    return route_mother_memory(
+        query=req.query,
+        mode=req.mode,
+        task_hint=req.task_hint,
+        limit=req.limit,
+    )
 
 
 @app.get("/wish")
