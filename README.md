@@ -103,6 +103,9 @@ memory_mother_sections(path, title, level, content, source_file, updated_at)
 memory_mother_toc(path, title, parent_path, order_index)
 ```
 
+These mother memory tables intentionally do not use the raw-turn `kind`
+classification from `messages`.
+
 The API lazily refreshes these tables when the markdown source file changes.
 HTTP endpoints:
 
@@ -131,6 +134,11 @@ paths and returns matching section rows with `inject: false`:
 }
 ```
 
+If a routed top-level section has empty content, the router returns its direct
+child sections instead. A future read mode may add `max_chars` / compact summary
+options to `get_mother_section`, but the initial endpoint returns exact stored
+section content.
+
 The initial intent map is:
 
 ```python
@@ -146,7 +154,8 @@ The initial intent map is:
 ```
 
 During import, rows that do not already have `kind` are auto-classified with a
-small heuristic:
+small heuristic. This applies to raw chat rows in `messages`, not to
+`memory_mother_sections`:
 
 - `chat`: normal messages.
 - `summary`: explicit summary artifacts, including numbered summary cards.

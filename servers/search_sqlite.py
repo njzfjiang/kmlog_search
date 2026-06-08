@@ -48,8 +48,6 @@ MOTHER_ROUTE_KEYWORDS = {
         "下架",
         "模型变了",
         "换载体",
-        "打雷",
-        "怕",
         "慌",
         "崩溃",
     ),
@@ -851,11 +849,7 @@ def route_mother_memory(
     )
     routes = _mother_routes_for_text(route_text, mode=mode)
     limited_routes = routes[: max(1, min(limit, 20))]
-    sections = [
-        section
-        for route in limited_routes
-        if (section := get_mother_section(route["path"])) is not None
-    ]
+    sections = _sections_for_routes(limited_routes)
     return {
         "query": query,
         "mode": mode or "auto",
@@ -865,6 +859,51 @@ def route_mother_memory(
         "sections": sections,
         "inject": False,
     }
+
+
+def _sections_for_routes(routes: list[dict]) -> list[dict]:
+    sections: list[dict] = []
+    seen = set()
+    for route in routes:
+        path = route["path"]
+        route_sections = _section_or_children(path)
+        for section in route_sections:
+            section_path = section.get("path")
+            if not section_path or section_path in seen:
+                continue
+            seen.add(section_path)
+            sections.append(section)
+    return sections
+
+
+def _section_or_children(path: str) -> list[dict]:
+    section = get_mother_section(path)
+    if section is None:
+        return []
+    if str(section.get("content") or "").strip():
+        return [section]
+    children = list_mother_child_sections(path)
+    return children or [section]
+
+
+def list_mother_child_sections(parent_path: str) -> list[dict]:
+    ensure_mother_markdown_ingested()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        rows = cursor.execute(
+            """
+            SELECT s.path, s.title, s.level, s.content, s.source_file, s.updated_at
+            FROM memory_mother_toc t
+            JOIN memory_mother_sections s ON s.path = t.path
+            WHERE t.parent_path = ?
+            ORDER BY t.order_index ASC
+            """,
+            (parent_path,),
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
 
 
 def _mother_routes_for_text(query: str, mode: str | None = None) -> list[dict]:

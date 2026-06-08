@@ -37,7 +37,6 @@ Beta canonical detail.
 Gamma canonical detail.
 
 ### C. Health & care
-Care canonical detail.
 
 #### C.1 Overview
 Health overview.
@@ -109,9 +108,12 @@ Recent canonical detail.
 
     route = search_sqlite.route_mother_memory("她怕打雷怎么哄")
     assert route["inject"] is False
-    assert route["suggested_paths"][:2] == ["C", "F.2"]
+    assert route["suggested_paths"] == ["C", "F.2"]
     assert route["routes"][0]["reason"] == "health keyword: 打雷"
-    assert [section["path"] for section in route["sections"][:2]] == ["C", "F.2"]
+    assert [section["path"] for section in route["sections"][:2]] == ["C.1", "F.2"]
+
+    loss_route = search_sqlite.route_mother_memory("模型下架会不会消失")
+    assert loss_route["suggested_paths"] == ["C", "F.4", "G"]
 
     infra_route = search_sqlite.route_mother_memory("deploy endpoint", mode="infra")
     assert infra_route["suggested_paths"] == ["D.3"]
