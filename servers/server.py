@@ -276,14 +276,22 @@ async def get_mother_toc() -> dict:
     return await _call_api("/memory/toc", {}, method="GET")
 
 @mcp.tool
-async def get_mother_section(path: str) -> dict:
+async def get_mother_section(
+    path: str,
+    include_children: bool = False,
+) -> dict:
     """
     按路径读取 mother markdown 记忆库 section。
 
     参数:
         path: section path，如 "F.2"
+        include_children: 是否递归合并所有子节，默认不合并
     """
-    return await _call_api("/memory/section", {"path": path}, method="GET")
+    return await _call_api(
+        "/memory/section",
+        {"path": path, "include_children": include_children},
+        method="GET",
+    )
 
 @mcp.tool
 async def search_mother_memory(

@@ -779,7 +779,7 @@ def list_mother_toc() -> list[dict]:
         conn.close()
 
 
-def get_mother_section(path: str) -> dict | None:
+def get_mother_section(path: str, include_children: bool = False) -> dict | None:
     ensure_mother_markdown_ingested()
     conn = get_connection()
     try:
@@ -792,9 +792,65 @@ def get_mother_section(path: str) -> dict | None:
             """,
             (path,),
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        if row is None:
+            return None
+
+        section = _row_to_dict(row)
+        if not include_children:
+            return section
+
+        descendant_rows = cursor.execute(
+            """
+            WITH RECURSIVE descendants(path) AS (
+                SELECT path
+                FROM memory_mother_toc
+                WHERE parent_path = ?
+
+                UNION ALL
+
+                SELECT child.path
+                FROM memory_mother_toc child
+                JOIN descendants parent ON child.parent_path = parent.path
+            )
+            SELECT s.path, s.title, s.level, s.content, s.source_file,
+                   s.updated_at, t.order_index
+            FROM descendants d
+            JOIN memory_mother_sections s ON s.path = d.path
+            JOIN memory_mother_toc t ON t.path = d.path
+            ORDER BY t.order_index ASC
+            """,
+            (path,),
+        ).fetchall()
+        descendants = [_row_to_dict(item) for item in descendant_rows]
+        own_content = section["content"]
+        section["own_content"] = own_content
+        section["content"] = _combine_mother_section_content(
+            own_content,
+            descendants,
+        )
+        section["included_paths"] = [path] + [
+            item["path"] for item in descendants
+        ]
+        return section
     finally:
         conn.close()
+
+
+def _combine_mother_section_content(
+    own_content: str,
+    descendants: list[dict],
+) -> str:
+    parts = []
+    if own_content.strip():
+        parts.append(own_content.strip())
+    for section in descendants:
+        level = max(1, min(int(section["level"]), 6))
+        part = f'{"#" * level} {section["path"]}. {section["title"]}'
+        content = str(section.get("content") or "").strip()
+        if content:
+            part = f"{part}\n{content}"
+        parts.append(part)
+    return "\n\n".join(parts)
 
 
 def search_mother_sections(

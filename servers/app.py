@@ -472,14 +472,19 @@ def api_memory_toc(x_api_key: Optional[str] = Header(default=None)):
 @app.get("/memory/section")
 def api_memory_section(
     path: str,
+    include_children: bool = False,
     x_api_key: Optional[str] = Header(default=None),
 ):
     auth(x_api_key)
     _ensure_mother_memory_supported()
-    section = get_mother_section(path)
+    section = get_mother_section(path, include_children=include_children)
     if section is None:
         raise HTTPException(status_code=404, detail="Mother memory section not found")
-    return {"path": path, "section": section}
+    return {
+        "path": path,
+        "include_children": include_children,
+        "section": section,
+    }
 
 
 @app.get("/memory/search")

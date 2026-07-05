@@ -112,6 +112,7 @@ HTTP endpoints:
 ```text
 GET /memory/toc
 GET /memory/section?path=F.2
+GET /memory/section?path=I-1&include_children=true
 GET /memory/search?q=canonical&scope=F
 POST /memory/route
 ```
@@ -134,10 +135,15 @@ paths and returns matching section rows with `inject: false`:
 }
 ```
 
+By default, `get_mother_section` returns only the exact stored section content.
+Pass `include_children=true` to recursively merge all descendant sections in
+table-of-contents order. The expanded response keeps the section's exact text in
+`own_content`, returns the merged Markdown in `content`, and lists its provenance
+in `included_paths`. Descendant headings are normalized to include their complete
+section paths.
+
 If a routed top-level section has empty content, the router returns its direct
-child sections instead. A future read mode may add `max_chars` / compact summary
-options to `get_mother_section`, but the initial endpoint returns exact stored
-section content.
+child sections instead.
 
 The initial intent map is:
 

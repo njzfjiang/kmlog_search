@@ -201,9 +201,15 @@ async def get_mother_toc() -> Dict[str, Any]:
     return await _get("/memory/toc")
 
 @mcp.tool()
-async def get_mother_section(path: str) -> Dict[str, Any]:
-    """Read one mother markdown memory section by path, e.g. F.2."""
-    return await _get("/memory/section", {"path": path})
+async def get_mother_section(
+    path: str,
+    include_children: bool = False,
+) -> Dict[str, Any]:
+    """Read a mother memory section, optionally merging all descendants."""
+    return await _get(
+        "/memory/section",
+        {"path": path, "include_children": include_children},
+    )
 
 @mcp.tool()
 async def search_mother_memory(

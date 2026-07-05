@@ -96,6 +96,21 @@ Recent canonical detail.
     assert search_sqlite.get_mother_section("I-1.1")["title"] == "总体偏好（氛围向）"
     assert search_sqlite.get_mother_section("I-3")["title"] == "Deep Intimacy （深度亲密/成人向）(Recent Records)"
 
+    exact_i = search_sqlite.get_mother_section("I-1")
+    assert exact_i["content"] == ""
+    assert "own_content" not in exact_i
+
+    expanded_i = search_sqlite.get_mother_section(
+        "I-1",
+        include_children=True,
+    )
+    assert expanded_i["own_content"] == ""
+    assert expanded_i["included_paths"] == ["I-1", "I-1.1", "I-1.2"]
+    assert "#### I-1.1. 总体偏好（氛围向）" in expanded_i["content"]
+    assert "Preference canonical detail." in expanded_i["content"]
+    assert "#### I-1.2. 触碰偏好（轻～中程度，未来可加细）" in expanded_i["content"]
+    assert "Touch canonical detail." in expanded_i["content"]
+
     scoped = search_sqlite.search_mother_sections("canonical", scope="F")
     assert [item["path"] for item in scoped] == ["F", "F.1", "F.2"]
     scoped_i = search_sqlite.search_mother_sections("canonical", scope="I")
@@ -170,3 +185,44 @@ Preference text.
 
     toc = search_sqlite.list_mother_toc()
     assert [item["path"] for item in toc] == ["A", "I-1", "I-1.1"]
+
+
+def test_get_mother_section_recursively_merges_nested_descendants(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "chat_search.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    mother_path = tmp_path / "mother.md"
+    mother_path.write_text(
+        """
+### A. Parent
+Parent text.
+
+#### 1. Child
+Child text.
+
+##### 1. Grandchild
+Grandchild text.
+""".strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(search_sqlite, "DB_PATH", db_path)
+    monkeypatch.setattr(search_sqlite, "DEFAULT_MOTHER_MEMORY_PATH", mother_path)
+
+    expanded = search_sqlite.get_mother_section("A", include_children=True)
+
+    assert expanded["own_content"] == "Parent text."
+    assert expanded["included_paths"] == ["A", "A.1", "A.1.1"]
+    assert expanded["content"].index("Parent text.") < expanded["content"].index(
+        "#### A.1. Child"
+    )
+    assert expanded["content"].index("#### A.1. Child") < expanded[
+        "content"
+    ].index("##### A.1.1. Grandchild")
+    assert "Grandchild text." in expanded["content"]
