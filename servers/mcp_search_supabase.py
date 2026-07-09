@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 import httpx
 
 # If you're already using FastMCP, this should match your health MCP style.
@@ -163,6 +163,111 @@ async def get_weekly_memory_candidates(
     if q:
         params["q"] = q
     return await _get("/weekly_memory_candidates", params)
+
+@mcp.tool()
+async def update_memory_candidate_status(candidate_id: int, status: str) -> Dict[str, Any]:
+    """Update one memory candidate review status."""
+    return await _post(
+        f"/memory_candidates/{candidate_id}/status",
+        {"status": status},
+    )
+
+@mcp.tool()
+async def promote_memory_candidate(
+    candidate_ids: List[int],
+    title: Optional[str] = None,
+    content: Optional[str] = None,
+    evidence: Optional[str] = None,
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    importance: Optional[int] = None,
+    confidence: Optional[str] = None,
+    explicitness: Optional[str] = "edited_by_human",
+    reviewer: Optional[str] = "human",
+    reviewed_at: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    superseded_by_item_id: Optional[int] = None,
+    metadata_json: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Promote one or more memory candidates into reviewed_memory_items."""
+    payload: Dict[str, Any] = {
+        "candidate_ids": candidate_ids,
+        "explicitness": explicitness,
+        "reviewer": reviewer,
+    }
+    optional_values = {
+        "title": title,
+        "content": content,
+        "evidence": evidence,
+        "domain": domain,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "importance": importance,
+        "confidence": confidence,
+        "reviewed_at": reviewed_at,
+        "expires_at": expires_at,
+        "superseded_by_item_id": superseded_by_item_id,
+        "metadata_json": metadata_json,
+    }
+    payload.update({key: value for key, value in optional_values.items() if value is not None})
+    return await _post("/memory_candidates/promote", payload)
+
+@mcp.tool()
+async def get_reviewed_memory_items(
+    id: Optional[int] = None,
+    status: Optional[str] = "active",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    explicitness: Optional[str] = None,
+    q: Optional[str] = None,
+    include_expired: bool = False,
+    include_sources: bool = False,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """Query reviewed memory items for context retrieval."""
+    params: Dict[str, Any] = {
+        "include_expired": include_expired,
+        "include_sources": include_sources,
+        "limit": int(limit),
+    }
+    optional_values = {
+        "id": id,
+        "status": status,
+        "domain": domain,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "explicitness": explicitness,
+        "q": q,
+    }
+    params.update({key: value for key, value in optional_values.items() if value is not None})
+    return await _get("/reviewed_memory_items", params)
+
+@mcp.tool()
+async def get_reviewed_memory_by_message(
+    message_pk: Optional[int] = None,
+    message_id: Optional[str] = None,
+    status: Optional[str] = "active",
+    include_expired: bool = False,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """Reverse lookup reviewed memory linked to a source message."""
+    params: Dict[str, Any] = {
+        "include_expired": include_expired,
+        "limit": int(limit),
+    }
+    if message_pk is not None:
+        params["message_pk"] = message_pk
+    if message_id:
+        params["message_id"] = message_id
+    if status is not None:
+        params["status"] = status
+    return await _get("/reviewed_memory/by_message", params)
 
 @mcp.tool()
 async def get_conversation_summary(conversation_id: str) -> Dict[str, Any]:

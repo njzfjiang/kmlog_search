@@ -206,10 +206,14 @@ GET  /memory/search
 GET  /memory/section
 GET  /memory/toc
 GET  /memory_week
+GET  /reviewed_memory/by_message
+GET  /reviewed_memory_items
 GET  /weekly_memory_candidates
 GET  /wish
 GET  /wishes
 POST /complete_wish/{id}
+POST /memory_candidates/{id}/status
+POST /memory_candidates/promote
 POST /memory/route
 POST /search
 POST /search_by_date
@@ -294,6 +298,8 @@ GET /daily_summary?date_key=2026-05-11
 GET /daily_summaries?start_date=2026-05-01&end_date=2026-05-18&limit=20
 GET /daily_memory_candidates?date_key=2026-05-11&status=candidate&limit=50
 GET /weekly_memory_candidates?start_date=2026-05-18&end_date=2026-05-24&status=candidate&limit=100
+GET /reviewed_memory_items?function=boot_core&status=active&limit=20
+GET /reviewed_memory/by_message?message_pk=30097
 GET /conversation_summary?conversation_id=<conversation_id>
 ```
 
@@ -303,12 +309,65 @@ primary mother, secondary mother, normalized label, and a short normalized
 evidence prefix. Each group includes a best `canonical` candidate, source
 candidate IDs, source dates, duplicate count, labels, and evidence snippets.
 
+Candidate review states are stored on `daily_memory_candidates.status`:
+
+- `candidate`: machine-generated proposal, not reviewed yet.
+- `accepted`: a human marked it as useful, but it has not been materialized.
+- `rejected`: a human explicitly rejected it.
+- `deferred`: review postponed.
+- `merged`: folded into another candidate or reviewed item.
+- `superseded`: replaced by a later candidate/review decision.
+- `promoted`: materialized into `reviewed_memory_items`.
+
+Reviewed memory items are the curated layer intended for later context
+retrieval. They are separate from raw candidates:
+
+```sql
+reviewed_memory_items(
+  id, title, content, evidence,
+  domain, function, primary_mother, secondary_mother,
+  importance, confidence, explicitness,
+  status, source_candidate_ids_json, source_message_ids_json,
+  reviewer, reviewed_at, created_at, updated_at,
+  expires_at, superseded_by_item_id, metadata_json
+)
+
+reviewed_memory_sources(
+  id, memory_item_id, candidate_id, message_pk, message_id,
+  evidence, source_role, created_at
+)
+```
+
+`reviewed_memory_items.status` is limited to the curated-item lifecycle:
+`active`, `archived`, or `superseded`. Expired items are excluded from normal
+lookup unless `include_expired=true`.
+
+Promotion accepts one or more candidate IDs and optional rewritten fields:
+
+```json
+{
+  "candidate_ids": [8],
+  "title": "Curated memory title",
+  "content": "Human-edited memory text for context retrieval.",
+  "explicitness": "edited_by_human",
+  "reviewer": "human"
+}
+```
+
+The promoted item keeps candidate/message provenance in JSON snapshot fields and
+in `reviewed_memory_sources`, so callers can reverse lookup curated memories by
+either `messages.id` (`message_pk`) or external `messages.message_id`.
+
 The MCP wrappers expose matching tools:
 
 - `get_daily_summary`
 - `list_daily_summaries`
 - `get_daily_memory_candidates`
 - `get_weekly_memory_candidates`
+- `update_memory_candidate_status`
+- `promote_memory_candidate`
+- `get_reviewed_memory_items`
+- `get_reviewed_memory_by_message`
 - `get_conversation_summary`
 
 ## VPS Notes

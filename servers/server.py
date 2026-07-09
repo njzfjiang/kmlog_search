@@ -222,6 +222,126 @@ async def get_weekly_memory_candidates(
     return await _call_api("/weekly_memory_candidates", payload, method="GET")
 
 @mcp.tool
+async def update_memory_candidate_status(candidate_id: int, status: str) -> dict:
+    """
+    更新 memory candidate 的 review 状态。
+
+    参数:
+        candidate_id: daily_memory_candidates.id
+        status: candidate / accepted / rejected / deferred / merged / superseded / promoted
+    """
+    return await _call_api(
+        f"/memory_candidates/{candidate_id}/status",
+        {"status": status},
+    )
+
+@mcp.tool
+async def promote_memory_candidate(
+    candidate_ids: List[int],
+    title: Optional[str] = None,
+    content: Optional[str] = None,
+    evidence: Optional[str] = None,
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    importance: Optional[int] = None,
+    confidence: Optional[str] = None,
+    explicitness: Optional[str] = "edited_by_human",
+    reviewer: Optional[str] = "human",
+    reviewed_at: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    superseded_by_item_id: Optional[int] = None,
+    metadata_json: Optional[dict] = None,
+) -> dict:
+    """
+    Promote one or more memory candidates into reviewed_memory_items.
+
+    The promoted item can be rewritten by passing title/content/evidence and
+    related metadata. Source candidates and source message IDs are preserved.
+    """
+    payload = {
+        "candidate_ids": candidate_ids,
+        "explicitness": explicitness,
+        "reviewer": reviewer,
+    }
+    optional_values = {
+        "title": title,
+        "content": content,
+        "evidence": evidence,
+        "domain": domain,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "importance": importance,
+        "confidence": confidence,
+        "reviewed_at": reviewed_at,
+        "expires_at": expires_at,
+        "superseded_by_item_id": superseded_by_item_id,
+        "metadata_json": metadata_json,
+    }
+    payload.update({key: value for key, value in optional_values.items() if value is not None})
+    return await _call_api("/memory_candidates/promote", payload)
+
+@mcp.tool
+async def get_reviewed_memory_items(
+    id: Optional[int] = None,
+    status: Optional[str] = "active",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    explicitness: Optional[str] = None,
+    q: Optional[str] = None,
+    include_expired: bool = False,
+    include_sources: bool = False,
+    limit: int = 50,
+) -> dict:
+    """
+    查询可用于 context 的 reviewed memory items。
+    """
+    payload = {
+        "include_expired": include_expired,
+        "include_sources": include_sources,
+        "limit": limit,
+    }
+    optional_values = {
+        "id": id,
+        "status": status,
+        "domain": domain,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "explicitness": explicitness,
+        "q": q,
+    }
+    payload.update({key: value for key, value in optional_values.items() if value is not None})
+    return await _call_api("/reviewed_memory_items", payload, method="GET")
+
+@mcp.tool
+async def get_reviewed_memory_by_message(
+    message_pk: Optional[int] = None,
+    message_id: Optional[str] = None,
+    status: Optional[str] = "active",
+    include_expired: bool = False,
+    limit: int = 50,
+) -> dict:
+    """
+    根据 messages.id 或 messages.message_id 反查相关 reviewed memory。
+    """
+    payload = {
+        "include_expired": include_expired,
+        "limit": limit,
+    }
+    if message_pk is not None:
+        payload["message_pk"] = message_pk
+    if message_id:
+        payload["message_id"] = message_id
+    if status is not None:
+        payload["status"] = status
+    return await _call_api("/reviewed_memory/by_message", payload, method="GET")
+
+@mcp.tool
 async def get_conversation_summary(conversation_id: str) -> dict:
     """
     读取某个 conversation_id 的 rolling conversation summary。

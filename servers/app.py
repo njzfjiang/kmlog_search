@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Any, Optional, List
 
 try:
     from dotenv import load_dotenv
@@ -36,10 +36,14 @@ if SEARCH_BACKEND == "supabase":
     list_core_anchors = None
     list_daily_summaries = None
     get_mother_section = None
+    get_reviewed_memory_by_message = None
+    list_reviewed_memory_items = None
     route_mother_memory = None
     list_weekly_memory_candidates = None
     list_wishes = None
+    promote_memory_candidate = None
     search_mother_sections = None
+    update_memory_candidate_status = None
     update_wish_status = None
 else:
     try:
@@ -51,16 +55,20 @@ else:
             get_conversation_summary,
             get_daily_summary,
             get_mother_section,
+            get_reviewed_memory_by_message,
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
             list_mother_toc,
+            list_reviewed_memory_items,
             list_weekly_memory_candidates,
             list_wishes,
+            promote_memory_candidate,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
             search_messages,
+            update_memory_candidate_status,
             update_wish_status,
         )
     except ModuleNotFoundError as exc:
@@ -74,16 +82,20 @@ else:
             get_conversation_summary,
             get_daily_summary,
             get_mother_section,
+            get_reviewed_memory_by_message,
             list_core_anchors,
             list_daily_memory_candidates,
             list_daily_summaries,
             list_mother_toc,
+            list_reviewed_memory_items,
             list_weekly_memory_candidates,
             list_wishes,
+            promote_memory_candidate,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
             search_messages,
+            update_memory_candidate_status,
             update_wish_status,
         )
 
@@ -142,6 +154,29 @@ class MemoryRouteReq(BaseModel):
     limit: int = 8
 
 
+class MemoryCandidateStatusReq(BaseModel):
+    status: str
+
+
+class PromoteMemoryCandidateReq(BaseModel):
+    candidate_ids: List[int]
+    title: Optional[str] = None
+    content: Optional[str] = None
+    evidence: Optional[str] = None
+    domain: Optional[str] = None
+    function: Optional[str] = None
+    primary_mother: Optional[str] = None
+    secondary_mother: Optional[str] = None
+    importance: Optional[int] = None
+    confidence: Optional[str] = None
+    explicitness: Optional[str] = "edited_by_human"
+    reviewer: Optional[str] = "human"
+    reviewed_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    superseded_by_item_id: Optional[int] = None
+    metadata_json: Optional[Any] = None
+
+
 class WishReq(BaseModel):
     owner: str
     scope: str
@@ -161,6 +196,16 @@ WISH_OWNERS = {"Mei", "Kai", "Shared"}
 WISH_SCOPES = {"care", "work", "romance", "play", "misc"}
 WISH_STATUSES = {"open", "done", "stale", "archived"}
 WISH_SOURCES = {"manual", "agent_suggest"}
+MEMORY_CANDIDATE_STATUSES = {
+    "candidate",
+    "accepted",
+    "rejected",
+    "deferred",
+    "merged",
+    "superseded",
+    "promoted",
+}
+REVIEWED_MEMORY_STATUSES = {"active", "archived", "superseded"}
 
 
 def _ensure_wishes_supported() -> None:
@@ -184,6 +229,17 @@ def _ensure_summaries_supported() -> None:
         or list_weekly_memory_candidates is None
     ):
         raise HTTPException(status_code=501, detail="Summaries are only implemented for the sqlite backend")
+
+
+def _ensure_reviewed_memory_supported() -> None:
+    if (
+        SEARCH_BACKEND != "sqlite"
+        or get_reviewed_memory_by_message is None
+        or list_reviewed_memory_items is None
+        or promote_memory_candidate is None
+        or update_memory_candidate_status is None
+    ):
+        raise HTTPException(status_code=501, detail="Reviewed memory is only implemented for the sqlite backend")
 
 
 def _ensure_core_anchors_supported() -> None:
@@ -407,6 +463,128 @@ def api_list_weekly_memory_candidates(
         "q": q,
         **weekly,
     }
+
+
+@app.post("/memory_candidates/{candidate_id}/status")
+def api_update_memory_candidate_status(
+    candidate_id: int,
+    req: MemoryCandidateStatusReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    _validate_choice("status", req.status, MEMORY_CANDIDATE_STATUSES)
+    candidate = update_memory_candidate_status(candidate_id, req.status)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Memory candidate not found")
+    return {"candidate": candidate}
+
+
+@app.post("/memory_candidates/promote")
+def api_promote_memory_candidate(
+    req: PromoteMemoryCandidateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    if not req.candidate_ids:
+        raise HTTPException(status_code=400, detail="candidate_ids must not be empty")
+    try:
+        item = promote_memory_candidate(
+            candidate_ids=req.candidate_ids,
+            title=req.title,
+            content=req.content,
+            evidence=req.evidence,
+            domain=req.domain,
+            function=req.function,
+            primary_mother=req.primary_mother,
+            secondary_mother=req.secondary_mother,
+            importance=req.importance,
+            confidence=req.confidence,
+            explicitness=req.explicitness,
+            reviewer=req.reviewer,
+            reviewed_at=req.reviewed_at,
+            expires_at=req.expires_at,
+            superseded_by_item_id=req.superseded_by_item_id,
+            metadata_json=req.metadata_json,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@app.get("/reviewed_memory_items")
+def api_list_reviewed_memory_items(
+    id: Optional[int] = None,
+    status: Optional[str] = "active",
+    domain: Optional[str] = None,
+    function: Optional[str] = None,
+    primary_mother: Optional[str] = None,
+    secondary_mother: Optional[str] = None,
+    explicitness: Optional[str] = None,
+    q: Optional[str] = None,
+    include_expired: bool = False,
+    include_sources: bool = False,
+    limit: int = 50,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    if status:
+        _validate_choice("status", status, REVIEWED_MEMORY_STATUSES)
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    return {
+        "id": id,
+        "status": status,
+        "domain": domain,
+        "function": function,
+        "primary_mother": primary_mother,
+        "secondary_mother": secondary_mother,
+        "explicitness": explicitness,
+        "q": q,
+        "include_expired": include_expired,
+        "include_sources": include_sources,
+        "results": list_reviewed_memory_items(
+            item_id=id,
+            status=status,
+            domain=domain,
+            function=function,
+            primary_mother=primary_mother,
+            secondary_mother=secondary_mother,
+            explicitness=explicitness,
+            q=q,
+            include_expired=include_expired,
+            include_sources=include_sources,
+            limit=limit,
+        ),
+    }
+
+
+@app.get("/reviewed_memory/by_message")
+def api_get_reviewed_memory_by_message(
+    message_pk: Optional[int] = None,
+    message_id: Optional[str] = None,
+    status: Optional[str] = "active",
+    include_expired: bool = False,
+    limit: int = 50,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    if status:
+        _validate_choice("status", status, REVIEWED_MEMORY_STATUSES)
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    if message_pk is None and not message_id:
+        raise HTTPException(status_code=400, detail="message_pk or message_id is required")
+    return get_reviewed_memory_by_message(
+        message_pk=message_pk,
+        message_id=message_id,
+        status=status,
+        include_expired=include_expired,
+        limit=limit,
+    )
 
 
 @app.get("/conversation_summary")

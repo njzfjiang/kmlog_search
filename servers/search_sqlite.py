@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sqlite3
@@ -140,6 +141,7 @@ def ensure_search_indexes():
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_kind_idx ON messages(kind)")
         ensure_wishes_table(cursor)
         ensure_mother_memory_tables(cursor)
+        ensure_reviewed_memory_tables(cursor)
         conn.commit()
         print("SQLite search indexes are ready")
     finally:
@@ -176,6 +178,59 @@ def ensure_mother_memory_tables(cursor):
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_sections_source ON memory_mother_sections(source_file)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_toc_parent ON memory_mother_toc(parent_path)")
+
+
+def ensure_reviewed_memory_tables(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_memory_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          evidence TEXT,
+          domain TEXT NOT NULL,
+          function TEXT NOT NULL,
+          primary_mother TEXT,
+          secondary_mother TEXT,
+          importance INTEGER DEFAULT 3,
+          confidence TEXT,
+          explicitness TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          source_candidate_ids_json TEXT,
+          source_message_ids_json TEXT,
+          reviewer TEXT DEFAULT 'human',
+          reviewed_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          expires_at TEXT,
+          superseded_by_item_id INTEGER,
+          metadata_json TEXT,
+          FOREIGN KEY(superseded_by_item_id) REFERENCES reviewed_memory_items(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_memory_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          memory_item_id INTEGER NOT NULL,
+          candidate_id INTEGER,
+          message_pk INTEGER,
+          message_id TEXT,
+          evidence TEXT,
+          source_role TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(memory_item_id) REFERENCES reviewed_memory_items(id),
+          FOREIGN KEY(candidate_id) REFERENCES daily_memory_candidates(id),
+          FOREIGN KEY(message_pk) REFERENCES messages(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_status ON reviewed_memory_items(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_function ON reviewed_memory_items(function)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_domain ON reviewed_memory_items(domain)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_primary_mother ON reviewed_memory_items(primary_mother)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_expires_at ON reviewed_memory_items(expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_item ON reviewed_memory_sources(memory_item_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_candidate ON reviewed_memory_sources(candidate_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_message_pk ON reviewed_memory_sources(message_pk)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_message_id ON reviewed_memory_sources(message_id)")
 
 
 def ensure_wishes_table(cursor):
@@ -261,6 +316,566 @@ def _best_candidate(existing: dict, candidate: dict) -> dict:
         candidate.get("date_key") or "",
     )
     return candidate if candidate_score > existing_score else existing
+
+
+def _json_dump(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _json_list(value) -> list:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _unique_preserving_order(values) -> list:
+    out = []
+    seen = set()
+    for value in values:
+        if value is None or value in seen:
+            continue
+        out.append(value)
+        seen.add(value)
+    return out
+
+
+def _reviewed_memory_row_to_dict(row) -> dict:
+    return _row_to_dict(row)
+
+
+def _get_reviewed_memory_item(cursor, item_id: int, include_sources: bool = False) -> dict | None:
+    row = cursor.execute(
+        """
+        SELECT
+            id,
+            title,
+            content,
+            evidence,
+            domain,
+            function,
+            primary_mother,
+            secondary_mother,
+            importance,
+            confidence,
+            explicitness,
+            status,
+            source_candidate_ids_json,
+            source_message_ids_json,
+            reviewer,
+            reviewed_at,
+            created_at,
+            updated_at,
+            expires_at,
+            superseded_by_item_id,
+            metadata_json
+        FROM reviewed_memory_items
+        WHERE id = ?
+        """,
+        (item_id,),
+    ).fetchone()
+    if row is None:
+        return None
+
+    item = _reviewed_memory_row_to_dict(row)
+    if include_sources:
+        sources = cursor.execute(
+            """
+            SELECT
+                id,
+                memory_item_id,
+                candidate_id,
+                message_pk,
+                message_id,
+                evidence,
+                source_role,
+                created_at
+            FROM reviewed_memory_sources
+            WHERE memory_item_id = ?
+            ORDER BY id ASC
+            """,
+            (item_id,),
+        ).fetchall()
+        item["sources"] = [_row_to_dict(source) for source in sources]
+    return item
+
+
+def ensure_reviewed_memory_indexes():
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+        conn.commit()
+        print("SQLite reviewed memory tables are ready")
+    finally:
+        conn.close()
+
+
+def update_memory_candidate_status(
+    candidate_id: int,
+    status: str,
+) -> dict | None:
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE daily_memory_candidates SET status = ? WHERE id = ?",
+            (status, candidate_id),
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return None
+        conn.commit()
+        row = cursor.execute(
+            """
+            SELECT
+                id,
+                date_key,
+                summary_version,
+                label,
+                evidence,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                confidence,
+                source_message_ids_json,
+                status,
+                metadata_json,
+                created_at
+            FROM daily_memory_candidates
+            WHERE id = ?
+            """,
+            (candidate_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def promote_memory_candidate(
+    candidate_ids: list[int],
+    title: str | None = None,
+    content: str | None = None,
+    evidence: str | None = None,
+    domain: str | None = None,
+    function: str | None = None,
+    primary_mother: str | None = None,
+    secondary_mother: str | None = None,
+    importance: int | None = None,
+    confidence: str | None = None,
+    explicitness: str | None = "edited_by_human",
+    reviewer: str | None = "human",
+    reviewed_at: str | None = None,
+    expires_at: str | None = None,
+    superseded_by_item_id: int | None = None,
+    metadata_json=None,
+) -> dict:
+    candidate_ids = [int(candidate_id) for candidate_id in _unique_preserving_order(candidate_ids)]
+    if not candidate_ids:
+        raise ValueError("candidate_ids must not be empty")
+
+    now = datetime.now(timezone.utc).isoformat()
+    reviewed_at = reviewed_at or now
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+        placeholders = ",".join("?" for _ in candidate_ids)
+        rows = cursor.execute(
+            f"""
+            SELECT
+                id,
+                date_key,
+                summary_version,
+                label,
+                evidence,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                confidence,
+                source_message_ids_json,
+                status,
+                metadata_json,
+                created_at
+            FROM daily_memory_candidates
+            WHERE id IN ({placeholders})
+            ORDER BY id ASC
+            """,
+            candidate_ids,
+        ).fetchall()
+        candidates = [_row_to_dict(row) for row in rows]
+        if len(candidates) != len(candidate_ids):
+            found = {candidate["id"] for candidate in candidates}
+            missing = [candidate_id for candidate_id in candidate_ids if candidate_id not in found]
+            raise ValueError(f"candidate not found: {missing}")
+
+        canonical = candidates[0]
+        for candidate in candidates[1:]:
+            canonical = _best_candidate(canonical, candidate)
+
+        source_message_ids = _unique_preserving_order(
+            message_id
+            for candidate in candidates
+            for message_id in _json_list(candidate.get("source_message_ids_json"))
+        )
+        source_messages = {}
+        if source_message_ids:
+            message_placeholders = ",".join("?" for _ in source_message_ids)
+            message_rows = cursor.execute(
+                f"""
+                SELECT id, message_id
+                FROM messages
+                WHERE id IN ({message_placeholders})
+                """,
+                source_message_ids,
+            ).fetchall()
+            source_messages = {row["id"]: row["message_id"] for row in message_rows}
+
+        merged_evidence = "\n\n".join(
+            candidate["evidence"]
+            for candidate in candidates
+            if candidate.get("evidence")
+        )
+        item_values = {
+            "title": title or canonical["label"],
+            "content": content or canonical.get("evidence") or canonical["label"],
+            "evidence": evidence if evidence is not None else merged_evidence,
+            "domain": domain or canonical["domain"],
+            "function": function or canonical["function"],
+            "primary_mother": primary_mother if primary_mother is not None else canonical.get("primary_mother"),
+            "secondary_mother": secondary_mother if secondary_mother is not None else canonical.get("secondary_mother"),
+            "importance": importance if importance is not None else canonical.get("importance"),
+            "confidence": confidence if confidence is not None else canonical.get("confidence"),
+            "explicitness": explicitness,
+            "status": "active",
+            "source_candidate_ids_json": _json_dump(candidate_ids),
+            "source_message_ids_json": _json_dump(source_message_ids),
+            "reviewer": reviewer or "human",
+            "reviewed_at": reviewed_at,
+            "created_at": now,
+            "updated_at": now,
+            "expires_at": expires_at,
+            "superseded_by_item_id": superseded_by_item_id,
+            "metadata_json": _json_dump(metadata_json),
+        }
+        cursor.execute(
+            """
+            INSERT INTO reviewed_memory_items (
+                title,
+                content,
+                evidence,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                confidence,
+                explicitness,
+                status,
+                source_candidate_ids_json,
+                source_message_ids_json,
+                reviewer,
+                reviewed_at,
+                created_at,
+                updated_at,
+                expires_at,
+                superseded_by_item_id,
+                metadata_json
+            )
+            VALUES (
+                :title,
+                :content,
+                :evidence,
+                :domain,
+                :function,
+                :primary_mother,
+                :secondary_mother,
+                :importance,
+                :confidence,
+                :explicitness,
+                :status,
+                :source_candidate_ids_json,
+                :source_message_ids_json,
+                :reviewer,
+                :reviewed_at,
+                :created_at,
+                :updated_at,
+                :expires_at,
+                :superseded_by_item_id,
+                :metadata_json
+            )
+            """,
+            item_values,
+        )
+        item_id = cursor.lastrowid
+
+        for candidate in candidates:
+            cursor.execute(
+                """
+                INSERT INTO reviewed_memory_sources (
+                    memory_item_id,
+                    candidate_id,
+                    message_pk,
+                    message_id,
+                    evidence,
+                    source_role,
+                    created_at
+                )
+                VALUES (?, ?, NULL, NULL, ?, ?, ?)
+                """,
+                (
+                    item_id,
+                    candidate["id"],
+                    candidate.get("evidence"),
+                    "candidate",
+                    now,
+                ),
+            )
+        for message_pk in source_message_ids:
+            cursor.execute(
+                """
+                INSERT INTO reviewed_memory_sources (
+                    memory_item_id,
+                    candidate_id,
+                    message_pk,
+                    message_id,
+                    evidence,
+                    source_role,
+                    created_at
+                )
+                VALUES (?, NULL, ?, ?, NULL, ?, ?)
+                """,
+                (
+                    item_id,
+                    message_pk,
+                    source_messages.get(message_pk),
+                    "message",
+                    now,
+                ),
+            )
+
+        cursor.execute(
+            f"UPDATE daily_memory_candidates SET status = 'promoted' WHERE id IN ({placeholders})",
+            candidate_ids,
+        )
+        conn.commit()
+        item = _get_reviewed_memory_item(cursor, item_id, include_sources=True)
+        return item
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_reviewed_memory_items(
+    item_id: int | None = None,
+    status: str | None = "active",
+    domain: str | None = None,
+    function: str | None = None,
+    primary_mother: str | None = None,
+    secondary_mother: str | None = None,
+    explicitness: str | None = None,
+    q: str | None = None,
+    include_expired: bool = False,
+    include_sources: bool = False,
+    limit: int = 50,
+) -> list[dict]:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+        clauses = []
+        params = []
+        if item_id is not None:
+            clauses.append("id = ?")
+            params.append(item_id)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if domain:
+            clauses.append("domain = ?")
+            params.append(domain)
+        if function:
+            clauses.append("function = ?")
+            params.append(function)
+        if primary_mother:
+            clauses.append("primary_mother = ?")
+            params.append(primary_mother)
+        if secondary_mother:
+            clauses.append("secondary_mother = ?")
+            params.append(secondary_mother)
+        if explicitness:
+            clauses.append("explicitness = ?")
+            params.append(explicitness)
+        if q:
+            like_query = f"%{q}%"
+            clauses.append("(title LIKE ? OR content LIKE ? OR evidence LIKE ?)")
+            params.extend([like_query, like_query, like_query])
+        if not include_expired:
+            clauses.append("(expires_at IS NULL OR expires_at = '' OR expires_at > ?)")
+            params.append(now)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        rows = cursor.execute(
+            f"""
+            SELECT
+                id,
+                title,
+                content,
+                evidence,
+                domain,
+                function,
+                primary_mother,
+                secondary_mother,
+                importance,
+                confidence,
+                explicitness,
+                status,
+                source_candidate_ids_json,
+                source_message_ids_json,
+                reviewer,
+                reviewed_at,
+                created_at,
+                updated_at,
+                expires_at,
+                superseded_by_item_id,
+                metadata_json
+            FROM reviewed_memory_items
+            {where_sql}
+            ORDER BY importance DESC, updated_at DESC, id ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        items = [_reviewed_memory_row_to_dict(row) for row in rows]
+        if include_sources:
+            for item in items:
+                item["sources"] = cursor.execute(
+                    """
+                    SELECT
+                        id,
+                        memory_item_id,
+                        candidate_id,
+                        message_pk,
+                        message_id,
+                        evidence,
+                        source_role,
+                        created_at
+                    FROM reviewed_memory_sources
+                    WHERE memory_item_id = ?
+                    ORDER BY id ASC
+                    """,
+                    (item["id"],),
+                ).fetchall()
+                item["sources"] = [_row_to_dict(source) for source in item["sources"]]
+        return items
+    finally:
+        conn.close()
+
+
+def get_reviewed_memory_by_message(
+    message_pk: int | None = None,
+    message_id: str | None = None,
+    status: str | None = "active",
+    include_expired: bool = False,
+    limit: int = 50,
+) -> dict:
+    if message_pk is None and not message_id:
+        raise ValueError("message_pk or message_id is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+
+        message = None
+        if message_pk is not None:
+            message = cursor.execute(
+                """
+                SELECT id, timestamp, role, content, conversation_title, conversation_id, message_id, kind
+                FROM messages
+                WHERE id = ?
+                """,
+                (message_pk,),
+            ).fetchone()
+        elif message_id:
+            message = cursor.execute(
+                """
+                SELECT id, timestamp, role, content, conversation_title, conversation_id, message_id, kind
+                FROM messages
+                WHERE message_id = ?
+                """,
+                (message_id,),
+            ).fetchone()
+        if message is None:
+            return {"message": None, "results": []}
+
+        clauses = ["s.message_pk = ?"]
+        params = [message["id"]]
+        if status:
+            clauses.append("i.status = ?")
+            params.append(status)
+        if not include_expired:
+            clauses.append("(i.expires_at IS NULL OR i.expires_at = '' OR i.expires_at > ?)")
+            params.append(now)
+        where_sql = " AND ".join(clauses)
+        params.append(limit)
+        rows = cursor.execute(
+            f"""
+            SELECT DISTINCT
+                i.id,
+                i.title,
+                i.content,
+                i.evidence,
+                i.domain,
+                i.function,
+                i.primary_mother,
+                i.secondary_mother,
+                i.importance,
+                i.confidence,
+                i.explicitness,
+                i.status,
+                i.source_candidate_ids_json,
+                i.source_message_ids_json,
+                i.reviewer,
+                i.reviewed_at,
+                i.created_at,
+                i.updated_at,
+                i.expires_at,
+                i.superseded_by_item_id,
+                i.metadata_json
+            FROM reviewed_memory_sources s
+            JOIN reviewed_memory_items i ON i.id = s.memory_item_id
+            WHERE {where_sql}
+            ORDER BY i.importance DESC, i.updated_at DESC, i.id ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+        return {
+            "message": _row_to_dict(message),
+            "results": [_reviewed_memory_row_to_dict(row) for row in rows],
+        }
+    finally:
+        conn.close()
 
 
 def get_daily_summary(date_key: str) -> dict | None:
