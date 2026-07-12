@@ -190,6 +190,16 @@ The review page writes candidate decisions back to SQLite. `Accept`, `Reject`,
 `Defer`, and `Reset` update `daily_memory_candidates.status`; `Promote` opens an
 edit form and writes a curated row to `reviewed_memory_items`.
 
+Open the reviewed memory browser at:
+
+```text
+http://127.0.0.1:8013/reviewed_memory
+```
+
+The reviewed memory page lists curated items, supports status/domain/function/
+mother/keyword filtering, can include provenance rows, and can reverse lookup
+reviewed items by `messages.id` or external `messages.message_id`.
+
 Useful environment variables:
 
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
@@ -210,6 +220,7 @@ GET  /memory/search
 GET  /memory/section
 GET  /memory/toc
 GET  /memory_week
+GET  /reviewed_memory
 GET  /reviewed_memory/by_message
 GET  /reviewed_memory_items
 GET  /weekly_memory_candidates

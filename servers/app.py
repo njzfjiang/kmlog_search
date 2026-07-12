@@ -286,6 +286,11 @@ def memory_week_page():
     return (STATIC_DIR / "memory_week.html").read_text(encoding="utf-8")
 
 
+@app.get("/reviewed_memory", response_class=HTMLResponse)
+def reviewed_memory_page():
+    return (STATIC_DIR / "reviewed_memory.html").read_text(encoding="utf-8")
+
+
 @app.post("/ensure_indexes")
 def api_ensure_indexes(x_api_key: Optional[str] = Header(default=None)):
     auth(x_api_key)

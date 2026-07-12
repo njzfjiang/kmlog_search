@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reviewed Memory</title>
+  <link rel="stylesheet" href="static/reviewed_memory.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">KMLog</p>
+        <h1>Reviewed Memory</h1>
+      </div>
+      <label class="token-field">
+        <span>Token</span>
+        <input id="apiToken" type="password" autocomplete="off">
+      </label>
+    </header>
+
+    <section class="filters" aria-label="Reviewed memory filters">
+      <label class="field">
+        <span>Status</span>
+        <select id="statusFilter">
+          <option value="active">active</option>
+          <option value="archived">archived</option>
+          <option value="superseded">superseded</option>
+          <option value="">all</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Domain</span>
+        <input id="domainFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field">
+        <span>Function</span>
+        <input id="functionFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field">
+        <span>Primary Mother</span>
+        <input id="primaryMotherFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field">
+        <span>Secondary Mother</span>
+        <input id="secondaryMotherFilter" type="search" placeholder="Any">
+      </label>
+      <label class="field wide">
+        <span>Keyword</span>
+        <input id="keywordFilter" type="search" placeholder="Title, content, or evidence">
+      </label>
+      <label class="field small">
+        <span>Limit</span>
+        <input id="limitInput" type="number" min="1" max="500" value="50">
+      </label>
+      <label class="check-field">
+        <input id="includeSources" type="checkbox" checked>
+        <span>Sources</span>
+      </label>
+      <label class="check-field">
+        <input id="includeExpired" type="checkbox">
+        <span>Expired</span>
+      </label>
+      <button id="loadButton" class="primary-button" type="button">Load</button>
+    </section>
+
+    <section class="message-panel" aria-live="polite">
+      <p id="message" role="status"></p>
+      <span id="resultCount">0</span>
+    </section>
+
+    <section class="filters lookup-panel" aria-label="Source lookup">
+      <label class="field">
+        <span>Message PK</span>
+        <input id="messagePkInput" type="number" min="1" placeholder="SQLite id">
+      </label>
+      <label class="field wide">
+        <span>Message ID</span>
+        <input id="messageIdInput" type="search" placeholder="External message id">
+      </label>
+      <button id="lookupButton" class="secondary-button" type="button">Lookup source</button>
+      <button id="clearLookupButton" class="secondary-button" type="button">Clear</button>
+    </section>
+
+    <section class="list-shell">
+      <div class="panel-heading">
+        <h2>Items</h2>
+        <p id="modeLabel">Filtered list</p>
+      </div>
+      <div id="itemList" class="item-list"></div>
+      <p id="emptyState" class="empty-state" hidden>No reviewed memory items.</p>
+    </section>
+  </main>
+
+  <script src="static/reviewed_memory.js?v=20260712-1"></script>
+</body>
+</html>

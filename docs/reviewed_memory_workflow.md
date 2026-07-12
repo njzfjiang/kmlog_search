@@ -137,6 +137,20 @@ UI actions map to database writes:
 - `Reset`: set all candidate IDs in the displayed group back to `candidate`.
 - `Promote`: open an edit form and submit to `/memory_candidates/promote`.
 
+The curated reviewed-memory browser is:
+
+```text
+GET /reviewed_memory
+```
+
+Use it after promotion to:
+
+- list curated `reviewed_memory_items`;
+- filter by status, domain, function, primary/secondary mother path, and keyword;
+- include source rows for provenance checks;
+- reverse lookup reviewed items by `messages.id` or external
+  `messages.message_id`.
+
 Recommended boundary:
 
 ```text
