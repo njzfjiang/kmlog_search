@@ -15,8 +15,8 @@ const loadButton = document.querySelector("#loadButton");
 const exportButton = document.querySelector("#exportButton");
 const rawCount = document.querySelector("#rawCount");
 const groupCount = document.querySelector("#groupCount");
-const acceptedCount = document.querySelector("#acceptedCount");
-const rejectedCount = document.querySelector("#rejectedCount");
+const acceptedCount = document.querySelector("#acceptedCount") || document.querySelector("#keepCount");
+const rejectedCount = document.querySelector("#rejectedCount") || document.querySelector("#dropCount");
 const domainBars = document.querySelector("#domainBars");
 const functionBars = document.querySelector("#functionBars");
 const candidateList = document.querySelector("#candidateList");
@@ -221,8 +221,12 @@ function renderCards() {
 
 function render() {
   const statuses = state.groups.map((group) => statusFor(group));
-  acceptedCount.textContent = String(statuses.filter((value) => value === "accepted").length);
-  rejectedCount.textContent = String(statuses.filter((value) => value === "rejected").length);
+  if (acceptedCount) {
+    acceptedCount.textContent = String(statuses.filter((value) => value === "accepted").length);
+  }
+  if (rejectedCount) {
+    rejectedCount.textContent = String(statuses.filter((value) => value === "rejected").length);
+  }
   renderBars(domainBars, countBy("domain"));
   renderBars(functionBars, countBy("function"));
   renderCards();
@@ -299,6 +303,10 @@ candidateList.addEventListener("click", (event) => {
 });
 
 function openPromoteDialog(idsText) {
+  if (!promoteDialog) {
+    message.textContent = "Promote dialog is not available. Refresh the page assets and try again.";
+    return;
+  }
   const firstId = Number(idsText.split(",")[0]);
   const group = groupByCandidateId(firstId);
   if (!group) return;
@@ -337,24 +345,26 @@ function promotePayload() {
   return payload;
 }
 
-promoteSubmit.addEventListener("click", async () => {
-  if (!promoteForm.reportValidity()) return;
-  const payload = promotePayload();
-  try {
-    promoteSubmit.disabled = true;
-    message.textContent = "Promoting candidate...";
-    await apiFetch("memory_candidates/promote", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    promoteDialog.close();
-    message.textContent = "Candidate promoted.";
-    await loadWeeklyCandidates();
-  } catch (error) {
-    message.textContent = error.message;
-  } finally {
-    promoteSubmit.disabled = false;
-  }
-});
+if (promoteSubmit) {
+  promoteSubmit.addEventListener("click", async () => {
+    if (!promoteForm.reportValidity()) return;
+    const payload = promotePayload();
+    try {
+      promoteSubmit.disabled = true;
+      message.textContent = "Promoting candidate...";
+      await apiFetch("memory_candidates/promote", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      promoteDialog.close();
+      message.textContent = "Candidate promoted.";
+      await loadWeeklyCandidates();
+    } catch (error) {
+      message.textContent = error.message;
+    } finally {
+      promoteSubmit.disabled = false;
+    }
+  });
+}
 
 loadWeeklyCandidates();
