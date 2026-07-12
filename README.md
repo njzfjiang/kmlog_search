@@ -303,6 +303,32 @@ GET /reviewed_memory/by_message?message_pk=30097
 GET /conversation_summary?conversation_id=<conversation_id>
 ```
 
+Daily summaries and raw memory candidates are generated upstream by
+`chat-proxy`, not by this FastAPI process. This repo treats
+`daily_summaries`, `daily_summary_versions`, and `daily_memory_candidates` as
+read/review inputs.
+
+Preferred manual backfill entrypoint:
+
+```powershell
+cd C:\Users\ellat\Desktop\K_Space\chat-proxy
+python -m chat_proxy.manual_daily_summary --date 2026-05-18
+python -m chat_proxy.manual_daily_summary --date 2026-05-18 --force
+```
+
+Preferred HTTP entrypoint from `chat-proxy`:
+
+```json
+POST /daily-summaries/run
+{
+  "date_key": "2026-05-18",
+  "force": false
+}
+```
+
+Cron should normally call the `chat-proxy` runner, then use this service for
+weekly candidate review, promotion, and provenance lookup.
+
 `/weekly_memory_candidates` reads the same daily candidate table, then returns
 deduped weekly groups. The dedupe key is conservative: domain, function,
 primary mother, secondary mother, normalized label, and a short normalized

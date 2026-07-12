@@ -140,6 +140,7 @@ def ensure_search_indexes():
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS messages_kind_idx ON messages(kind)")
         ensure_wishes_table(cursor)
+        ensure_summary_tables(cursor)
         ensure_mother_memory_tables(cursor)
         ensure_reviewed_memory_tables(cursor)
         conn.commit()
@@ -178,6 +179,66 @@ def ensure_mother_memory_tables(cursor):
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_sections_source ON memory_mother_sections(source_file)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_toc_parent ON memory_mother_toc(parent_path)")
+
+
+def _table_columns(cursor, table_name: str) -> set[str]:
+    return {row[1] for row in cursor.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
+def ensure_summary_tables(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_summaries (
+          date_key TEXT PRIMARY KEY,
+          summary TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 0,
+          last_message_id INTEGER,
+          status TEXT,
+          error_text TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_summary_versions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date_key TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          summary TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          last_message_id INTEGER,
+          previous_last_message_id INTEGER,
+          source_message_count INTEGER,
+          model_id TEXT,
+          metadata_json TEXT,
+          UNIQUE(date_key, version)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_memory_candidates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date_key TEXT NOT NULL,
+          summary_version INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          evidence TEXT,
+          domain TEXT NOT NULL,
+          function TEXT NOT NULL,
+          primary_mother TEXT NOT NULL,
+          secondary_mother TEXT,
+          importance INTEGER,
+          confidence TEXT,
+          source_message_ids_json TEXT,
+          status TEXT NOT NULL DEFAULT 'candidate',
+          metadata_json TEXT,
+          created_at TEXT NOT NULL
+        )
+    """)
+    candidate_columns = _table_columns(cursor, "daily_memory_candidates")
+    if "target_layer" not in candidate_columns:
+        cursor.execute("ALTER TABLE daily_memory_candidates ADD COLUMN target_layer TEXT")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_summaries_updated_at ON daily_summaries(updated_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_memory_candidates_date_version ON daily_memory_candidates(date_key, summary_version)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_memory_candidates_status ON daily_memory_candidates(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_memory_candidates_target_layer ON daily_memory_candidates(target_layer)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_summary_versions_date_version ON daily_summary_versions(date_key, version)")
 
 
 def ensure_reviewed_memory_tables(cursor):
@@ -427,6 +488,7 @@ def update_memory_candidate_status(
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        ensure_summary_tables(cursor)
         cursor.execute(
             "UPDATE daily_memory_candidates SET status = ? WHERE id = ?",
             (status, candidate_id),
@@ -452,6 +514,7 @@ def update_memory_candidate_status(
                 source_message_ids_json,
                 status,
                 metadata_json,
+                target_layer,
                 created_at
             FROM daily_memory_candidates
             WHERE id = ?
@@ -491,6 +554,7 @@ def promote_memory_candidate(
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        ensure_summary_tables(cursor)
         ensure_reviewed_memory_tables(cursor)
         placeholders = ",".join("?" for _ in candidate_ids)
         rows = cursor.execute(
@@ -510,6 +574,7 @@ def promote_memory_candidate(
                 source_message_ids_json,
                 status,
                 metadata_json,
+                target_layer,
                 created_at
             FROM daily_memory_candidates
             WHERE id IN ({placeholders})
@@ -983,6 +1048,7 @@ def list_daily_memory_candidates(
                 source_message_ids_json,
                 status,
                 metadata_json,
+                target_layer,
                 created_at
             FROM daily_memory_candidates
             {where_sql}
