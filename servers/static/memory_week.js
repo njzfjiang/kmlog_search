@@ -1,7 +1,7 @@
 const state = {
   groups: [],
   token: localStorage.getItem("kmlogApiToken") || "",
-  reviews: JSON.parse(localStorage.getItem("kmlogWeeklyMemoryReviews") || "{}"),
+  activePromoteGroup: null,
 };
 
 const apiToken = document.querySelector("#apiToken");
@@ -15,8 +15,8 @@ const loadButton = document.querySelector("#loadButton");
 const exportButton = document.querySelector("#exportButton");
 const rawCount = document.querySelector("#rawCount");
 const groupCount = document.querySelector("#groupCount");
-const keepCount = document.querySelector("#keepCount");
-const dropCount = document.querySelector("#dropCount");
+const acceptedCount = document.querySelector("#acceptedCount");
+const rejectedCount = document.querySelector("#rejectedCount");
 const domainBars = document.querySelector("#domainBars");
 const functionBars = document.querySelector("#functionBars");
 const candidateList = document.querySelector("#candidateList");
@@ -24,6 +24,21 @@ const emptyState = document.querySelector("#emptyState");
 const message = document.querySelector("#message");
 const exportDialog = document.querySelector("#exportDialog");
 const exportText = document.querySelector("#exportText");
+const promoteDialog = document.querySelector("#promoteDialog");
+const promoteForm = document.querySelector("#promoteForm");
+const promoteCandidateIds = document.querySelector("#promoteCandidateIds");
+const promoteTitle = document.querySelector("#promoteTitle");
+const promoteContent = document.querySelector("#promoteContent");
+const promoteEvidence = document.querySelector("#promoteEvidence");
+const promoteDomain = document.querySelector("#promoteDomain");
+const promoteFunction = document.querySelector("#promoteFunction");
+const promotePrimaryMother = document.querySelector("#promotePrimaryMother");
+const promoteSecondaryMother = document.querySelector("#promoteSecondaryMother");
+const promoteImportance = document.querySelector("#promoteImportance");
+const promoteConfidence = document.querySelector("#promoteConfidence");
+const promoteExplicitness = document.querySelector("#promoteExplicitness");
+const promoteReviewer = document.querySelector("#promoteReviewer");
+const promoteSubmit = document.querySelector("#promoteSubmit");
 
 apiToken.value = state.token;
 setDefaultWeek();
@@ -34,14 +49,22 @@ function headers() {
   return out;
 }
 
-async function apiFetch(path) {
+async function apiFetch(path, options = {}) {
   const separator = path.includes("?") ? "&" : "?";
+  const method = options.method || "GET";
+  const requestHeaders = {
+    ...headers(),
+    "Cache-Control": "no-cache",
+    ...(options.headers || {}),
+  };
+  if (options.body && !requestHeaders["Content-Type"]) {
+    requestHeaders["Content-Type"] = "application/json";
+  }
   const response = await fetch(`${path}${separator}_=${Date.now()}`, {
+    method,
     cache: "no-store",
-    headers: {
-      ...headers(),
-      "Cache-Control": "no-cache",
-    },
+    headers: requestHeaders,
+    body: options.body,
   });
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -88,22 +111,55 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function reviewKey(group) {
-  return `${startDate.value}:${endDate.value}:${group.dedupe_key}`;
+function statusFor(group) {
+  return group.canonical.status || "candidate";
 }
 
-function reviewFor(group) {
-  return state.reviews[reviewKey(group)] || "";
+function isTerminalStatus(status) {
+  return ["rejected", "promoted", "superseded", "merged"].includes(status);
 }
 
-function setReview(groupKey, value) {
-  if (value) {
-    state.reviews[groupKey] = value;
-  } else {
-    delete state.reviews[groupKey];
-  }
-  localStorage.setItem("kmlogWeeklyMemoryReviews", JSON.stringify(state.reviews));
+function statusClass(status) {
+  if (status === "accepted") return "accepted";
+  if (status === "rejected") return "rejected";
+  if (status === "deferred") return "deferred";
+  if (status === "promoted") return "promoted";
+  return "";
+}
+
+function groupByCandidateId(candidateId) {
+  return state.groups.find((group) => group.candidate_ids.includes(Number(candidateId)));
+}
+
+function setGroupStatusLocal(group, status) {
+  group.canonical.status = status;
   render();
+}
+
+async function updateCandidateStatus(candidateId, status) {
+  return apiFetch(`memory_candidates/${candidateId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+
+async function updateGroupStatus(group, status) {
+  const previous = group.canonical.status;
+  setGroupStatusLocal(group, status);
+  message.textContent = `Saving ${group.candidate_ids.length} candidate(s)...`;
+  try {
+    await Promise.all(group.candidate_ids.map((candidateId) => updateCandidateStatus(candidateId, status)));
+    message.textContent = `Saved status: ${status}`;
+    if (statusFilter.value && statusFilter.value !== status) {
+      await loadWeeklyCandidates();
+    } else {
+      render();
+    }
+  } catch (error) {
+    group.canonical.status = previous;
+    message.textContent = error.message;
+    render();
+  }
 }
 
 function countBy(path) {
@@ -130,15 +186,17 @@ function renderCards() {
   emptyState.hidden = state.groups.length > 0;
   candidateList.innerHTML = state.groups.map((group) => {
     const item = group.canonical;
-    const key = reviewKey(group);
-    const review = reviewFor(group);
+    const status = statusFor(group);
     const dates = group.date_keys.join(", ");
+    const ids = group.candidate_ids.join(",");
     return `
-      <article class="candidate-card ${escapeHtml(review)}">
+      <article class="candidate-card ${escapeHtml(statusClass(status))}">
         <div class="candidate-meta">
           <span class="pill">${escapeHtml(item.domain || "domain")}</span>
           <span class="pill">${escapeHtml(item.function || "function")}</span>
+          <span class="pill status-pill">${escapeHtml(status)}</span>
           <span class="pill">x${escapeHtml(group.count)}</span>
+          <span class="pill">#${escapeHtml(ids)}</span>
           <span>${escapeHtml(dates)}</span>
         </div>
         <h3>${escapeHtml(item.label)}</h3>
@@ -147,11 +205,14 @@ function renderCards() {
           <span>${escapeHtml(item.primary_mother || "")}</span>
           <span>${escapeHtml(item.secondary_mother || "")}</span>
           <span>I${escapeHtml(item.importance)} C${escapeHtml(item.confidence)}</span>
+          <span>${escapeHtml(item.target_layer || "")}</span>
         </div>
         <div class="candidate-actions">
-          <button type="button" data-review-key="${escapeHtml(key)}" data-review="keep" class="${review === "keep" ? "active" : ""}">Keep</button>
-          <button type="button" data-review-key="${escapeHtml(key)}" data-review="drop" class="${review === "drop" ? "active" : ""}">Drop</button>
-          <button type="button" data-review-key="${escapeHtml(key)}" data-review="">Clear</button>
+          <button type="button" data-candidate-ids="${escapeHtml(ids)}" data-status="accepted" class="${status === "accepted" ? "active" : ""}">Accept</button>
+          <button type="button" data-candidate-ids="${escapeHtml(ids)}" data-status="rejected" class="${status === "rejected" ? "active" : ""}">Reject</button>
+          <button type="button" data-candidate-ids="${escapeHtml(ids)}" data-status="deferred" class="${status === "deferred" ? "active" : ""}">Defer</button>
+          <button type="button" data-candidate-ids="${escapeHtml(ids)}" data-status="candidate" class="${status === "candidate" ? "active" : ""}">Reset</button>
+          <button type="button" data-promote-ids="${escapeHtml(ids)}" ${isTerminalStatus(status) ? "disabled" : ""}>Promote</button>
         </div>
       </article>
     `;
@@ -159,9 +220,9 @@ function renderCards() {
 }
 
 function render() {
-  const reviews = state.groups.map((group) => reviewFor(group));
-  keepCount.textContent = String(reviews.filter((value) => value === "keep").length);
-  dropCount.textContent = String(reviews.filter((value) => value === "drop").length);
+  const statuses = state.groups.map((group) => statusFor(group));
+  acceptedCount.textContent = String(statuses.filter((value) => value === "accepted").length);
+  rejectedCount.textContent = String(statuses.filter((value) => value === "rejected").length);
   renderBars(domainBars, countBy("domain"));
   renderBars(functionBars, countBy("function"));
   renderCards();
@@ -187,7 +248,7 @@ async function loadWeeklyCandidates() {
 }
 
 function markdownReport() {
-  const kept = state.groups.filter((group) => reviewFor(group) !== "drop");
+  const kept = state.groups.filter((group) => statusFor(group) !== "rejected");
   const lines = [
     `# Memory Candidates ${startDate.value} to ${endDate.value}`,
     "",
@@ -202,6 +263,8 @@ function markdownReport() {
     lines.push(`- Group: ${item.domain || ""} / ${item.function || ""}`);
     lines.push(`- Mothers: ${item.primary_mother || ""} / ${item.secondary_mother || ""}`);
     lines.push(`- Score: importance ${item.importance}, confidence ${item.confidence}`);
+    lines.push(`- Status: ${item.status || "candidate"}`);
+    lines.push(`- Candidate IDs: ${group.candidate_ids.join(", ")}`);
     lines.push(`- Evidence: ${item.evidence || ""}`);
     lines.push("");
   });
@@ -222,9 +285,76 @@ apiToken.addEventListener("change", () => {
 });
 
 candidateList.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-review-key]");
+  const promoteButton = event.target.closest("[data-promote-ids]");
+  if (promoteButton) {
+    openPromoteDialog(promoteButton.dataset.promoteIds);
+    return;
+  }
+  const button = event.target.closest("[data-candidate-ids][data-status]");
   if (!button) return;
-  setReview(button.dataset.reviewKey, button.dataset.review);
+  const firstId = Number(button.dataset.candidateIds.split(",")[0]);
+  const group = groupByCandidateId(firstId);
+  if (!group) return;
+  updateGroupStatus(group, button.dataset.status);
+});
+
+function openPromoteDialog(idsText) {
+  const firstId = Number(idsText.split(",")[0]);
+  const group = groupByCandidateId(firstId);
+  if (!group) return;
+  const item = group.canonical;
+  state.activePromoteGroup = group;
+  promoteCandidateIds.value = idsText;
+  promoteTitle.value = item.label || "";
+  promoteContent.value = item.evidence || item.label || "";
+  promoteEvidence.value = item.evidence || "";
+  promoteDomain.value = item.domain || "";
+  promoteFunction.value = item.function || "";
+  promotePrimaryMother.value = item.primary_mother || "";
+  promoteSecondaryMother.value = item.secondary_mother || "";
+  promoteImportance.value = item.importance || "";
+  promoteConfidence.value = item.confidence || "";
+  promoteExplicitness.value = "edited_by_human";
+  promoteReviewer.value = promoteReviewer.value || "human";
+  promoteDialog.showModal();
+}
+
+function promotePayload() {
+  const payload = {
+    candidate_ids: promoteCandidateIds.value.split(",").map((value) => Number(value.trim())).filter(Boolean),
+    title: promoteTitle.value.trim(),
+    content: promoteContent.value.trim(),
+    evidence: promoteEvidence.value.trim(),
+    domain: promoteDomain.value.trim(),
+    function: promoteFunction.value.trim(),
+    primary_mother: promotePrimaryMother.value.trim() || null,
+    secondary_mother: promoteSecondaryMother.value.trim() || null,
+    confidence: promoteConfidence.value || null,
+    explicitness: promoteExplicitness.value,
+    reviewer: promoteReviewer.value.trim() || "human",
+  };
+  if (promoteImportance.value) payload.importance = Number(promoteImportance.value);
+  return payload;
+}
+
+promoteSubmit.addEventListener("click", async () => {
+  if (!promoteForm.reportValidity()) return;
+  const payload = promotePayload();
+  try {
+    promoteSubmit.disabled = true;
+    message.textContent = "Promoting candidate...";
+    await apiFetch("memory_candidates/promote", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    promoteDialog.close();
+    message.textContent = "Candidate promoted.";
+    await loadWeeklyCandidates();
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    promoteSubmit.disabled = false;
+  }
 });
 
 loadWeeklyCandidates();

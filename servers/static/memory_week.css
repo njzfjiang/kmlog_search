@@ -244,12 +244,20 @@ textarea:focus {
   background: #ffffff;
 }
 
-.candidate-card.keep {
+.candidate-card.accepted {
   border-color: rgba(82, 116, 90, 0.55);
 }
 
-.candidate-card.drop {
+.candidate-card.rejected {
   opacity: 0.58;
+}
+
+.candidate-card.deferred {
+  border-color: rgba(155, 120, 55, 0.55);
+}
+
+.candidate-card.promoted {
+  border-color: rgba(47, 93, 124, 0.55);
 }
 
 .candidate-meta,
@@ -290,14 +298,24 @@ textarea:focus {
   padding: 0 12px;
 }
 
-.candidate-actions button.active[data-review="keep"] {
+.candidate-actions button.active[data-status="accepted"] {
   border-color: var(--green);
   color: var(--green);
 }
 
-.candidate-actions button.active[data-review="drop"] {
+.candidate-actions button.active[data-status="rejected"] {
   border-color: var(--rose);
   color: var(--rose);
+}
+
+.candidate-actions button.active[data-status="deferred"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.candidate-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .pill {
@@ -305,6 +323,10 @@ textarea:focus {
   padding: 3px 8px;
   background: #edf1eb;
   color: var(--muted);
+}
+
+.status-pill {
+  color: var(--ink);
 }
 
 .empty-state {
@@ -340,6 +362,27 @@ textarea {
   color: var(--ink);
 }
 
+.promote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.promote-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.promote-grid textarea {
+  min-height: 92px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 @media (max-width: 860px) {
   .topbar {
     align-items: stretch;
@@ -352,7 +395,12 @@ textarea {
 
   .filters,
   .stats-grid,
-  .visual-grid {
+  .visual-grid,
+  .promote-grid {
     grid-template-columns: 1fr;
+  }
+
+  .promote-grid .wide {
+    grid-column: auto;
   }
 }

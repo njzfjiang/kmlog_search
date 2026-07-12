@@ -186,6 +186,10 @@ Open the weekly memory candidate review page at:
 http://127.0.0.1:8013/memory_week
 ```
 
+The review page writes candidate decisions back to SQLite. `Accept`, `Reject`,
+`Defer`, and `Reset` update `daily_memory_candidates.status`; `Promote` opens an
+edit form and writes a curated row to `reviewed_memory_items`.
+
 Useful environment variables:
 
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
@@ -328,6 +332,12 @@ POST /daily-summaries/run
 
 Cron should normally call the `chat-proxy` runner, then use this service for
 weekly candidate review, promotion, and provenance lookup.
+
+Detailed runbook:
+
+```text
+docs/reviewed_memory_workflow.md
+```
 
 `/weekly_memory_candidates` reads the same daily candidate table, then returns
 deduped weekly groups. The dedupe key is conservative: domain, function,

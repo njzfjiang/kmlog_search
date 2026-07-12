@@ -966,6 +966,7 @@ def list_daily_summaries(
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        ensure_summary_tables(cursor)
         clauses = []
         params = []
         if start_date:

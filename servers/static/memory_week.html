@@ -35,6 +35,10 @@
           <option value="">all</option>
           <option value="accepted">accepted</option>
           <option value="rejected">rejected</option>
+          <option value="deferred">deferred</option>
+          <option value="merged">merged</option>
+          <option value="superseded">superseded</option>
+          <option value="promoted">promoted</option>
         </select>
       </label>
       <label class="field">
@@ -63,12 +67,12 @@
         <strong id="groupCount">0</strong>
       </article>
       <article class="stat-card">
-        <span>Keep</span>
-        <strong id="keepCount">0</strong>
+        <span>Accepted</span>
+        <strong id="acceptedCount">0</strong>
       </article>
       <article class="stat-card">
-        <span>Drop</span>
-        <strong id="dropCount">0</strong>
+        <span>Rejected</span>
+        <strong id="rejectedCount">0</strong>
       </article>
     </section>
 
@@ -103,6 +107,77 @@
           <button class="icon-button" value="close" aria-label="Close" type="submit">x</button>
         </div>
         <textarea id="exportText" rows="16" readonly></textarea>
+      </form>
+    </dialog>
+
+    <dialog id="promoteDialog">
+      <form id="promoteForm" method="dialog">
+        <div class="dialog-heading">
+          <h2>Promote Candidate</h2>
+          <button class="icon-button" value="close" aria-label="Close" type="submit">x</button>
+        </div>
+        <input id="promoteCandidateIds" type="hidden">
+        <div class="promote-grid">
+          <label class="field wide">
+            <span>Title</span>
+            <input id="promoteTitle" required>
+          </label>
+          <label class="field wide">
+            <span>Content</span>
+            <textarea id="promoteContent" rows="5" required></textarea>
+          </label>
+          <label class="field wide">
+            <span>Evidence</span>
+            <textarea id="promoteEvidence" rows="3"></textarea>
+          </label>
+          <label class="field">
+            <span>Domain</span>
+            <input id="promoteDomain" required>
+          </label>
+          <label class="field">
+            <span>Function</span>
+            <input id="promoteFunction" required>
+          </label>
+          <label class="field">
+            <span>Primary Mother</span>
+            <input id="promotePrimaryMother">
+          </label>
+          <label class="field">
+            <span>Secondary Mother</span>
+            <input id="promoteSecondaryMother">
+          </label>
+          <label class="field">
+            <span>Importance</span>
+            <input id="promoteImportance" type="number" min="1" max="5">
+          </label>
+          <label class="field">
+            <span>Confidence</span>
+            <select id="promoteConfidence">
+              <option value="">unspecified</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="very_high">very_high</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Explicitness</span>
+            <select id="promoteExplicitness">
+              <option value="edited_by_human">edited_by_human</option>
+              <option value="explicit_user_said">explicit_user_said</option>
+              <option value="inferred">inferred</option>
+              <option value="assistant_interpreted">assistant_interpreted</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Reviewer</span>
+            <input id="promoteReviewer" value="human">
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel" type="submit">Cancel</button>
+          <button id="promoteSubmit" class="primary-button" value="promote" type="button">Promote</button>
+        </div>
       </form>
     </dialog>
   </main>
