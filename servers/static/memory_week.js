@@ -40,7 +40,23 @@ const promoteExplicitness = document.querySelector("#promoteExplicitness");
 const promoteReviewer = document.querySelector("#promoteReviewer");
 const promoteSubmit = document.querySelector("#promoteSubmit");
 
-apiToken.value = state.token;
+function setText(target, value) {
+  if (target) target.textContent = value;
+}
+
+function setHtml(target, value) {
+  if (target) target.innerHTML = value;
+}
+
+function setHidden(target, value) {
+  if (target) target.hidden = value;
+}
+
+function inputValue(target, fallback = "") {
+  return target ? target.value : fallback;
+}
+
+if (apiToken) apiToken.value = state.token;
 setDefaultWeek();
 
 function headers() {
@@ -80,8 +96,8 @@ function setDefaultWeek() {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 6);
-  startDate.value = isoDate(start);
-  endDate.value = isoDate(end);
+  if (startDate) startDate.value = isoDate(start);
+  if (endDate) endDate.value = isoDate(end);
 }
 
 function isoDate(date) {
@@ -90,15 +106,19 @@ function isoDate(date) {
 
 function queryString() {
   const params = new URLSearchParams({
-    start_date: startDate.value,
-    end_date: endDate.value,
+    start_date: inputValue(startDate),
+    end_date: inputValue(endDate),
     limit: "160",
     raw_limit: "1200",
   });
-  if (statusFilter.value) params.set("status", statusFilter.value);
-  if (domainFilter.value.trim()) params.set("domain", domainFilter.value.trim());
-  if (functionFilter.value.trim()) params.set("function", functionFilter.value.trim());
-  if (keywordFilter.value.trim()) params.set("q", keywordFilter.value.trim());
+  const status = inputValue(statusFilter);
+  const domain = inputValue(domainFilter).trim();
+  const memoryFunction = inputValue(functionFilter).trim();
+  const keyword = inputValue(keywordFilter).trim();
+  if (status) params.set("status", status);
+  if (domain) params.set("domain", domain);
+  if (memoryFunction) params.set("function", memoryFunction);
+  if (keyword) params.set("q", keyword);
   return params.toString();
 }
 
@@ -146,18 +166,18 @@ async function updateCandidateStatus(candidateId, status) {
 async function updateGroupStatus(group, status) {
   const previous = group.canonical.status;
   setGroupStatusLocal(group, status);
-  message.textContent = `Saving ${group.candidate_ids.length} candidate(s)...`;
+  setText(message, `Saving ${group.candidate_ids.length} candidate(s)...`);
   try {
     await Promise.all(group.candidate_ids.map((candidateId) => updateCandidateStatus(candidateId, status)));
-    message.textContent = `Saved status: ${status}`;
-    if (statusFilter.value && statusFilter.value !== status) {
+    setText(message, `Saved status: ${status}`);
+    if (inputValue(statusFilter) && inputValue(statusFilter) !== status) {
       await loadWeeklyCandidates();
     } else {
       render();
     }
   } catch (error) {
     group.canonical.status = previous;
-    message.textContent = error.message;
+    setText(message, error.message);
     render();
   }
 }
@@ -172,19 +192,21 @@ function countBy(path) {
 }
 
 function renderBars(target, counts) {
+  if (!target) return;
   const max = Math.max(1, ...counts.map((entry) => entry[1]));
-  target.innerHTML = counts.slice(0, 8).map(([label, count]) => `
+  setHtml(target, counts.slice(0, 8).map(([label, count]) => `
     <div class="bar-row">
       <span>${escapeHtml(label)}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.round((count / max) * 100)}%"></div></div>
       <strong>${count}</strong>
     </div>
-  `).join("");
+  `).join(""));
 }
 
 function renderCards() {
-  emptyState.hidden = state.groups.length > 0;
-  candidateList.innerHTML = state.groups.map((group) => {
+  setHidden(emptyState, state.groups.length > 0);
+  if (!candidateList) return;
+  setHtml(candidateList, state.groups.map((group) => {
     const item = group.canonical;
     const status = statusFor(group);
     const dates = group.date_keys.join(", ");
@@ -216,37 +238,33 @@ function renderCards() {
         </div>
       </article>
     `;
-  }).join("");
+  }).join(""));
 }
 
 function render() {
   const statuses = state.groups.map((group) => statusFor(group));
-  if (acceptedCount) {
-    acceptedCount.textContent = String(statuses.filter((value) => value === "accepted").length);
-  }
-  if (rejectedCount) {
-    rejectedCount.textContent = String(statuses.filter((value) => value === "rejected").length);
-  }
+  setText(acceptedCount, String(statuses.filter((value) => value === "accepted").length));
+  setText(rejectedCount, String(statuses.filter((value) => value === "rejected").length));
   renderBars(domainBars, countBy("domain"));
   renderBars(functionBars, countBy("function"));
   renderCards();
 }
 
 async function loadWeeklyCandidates() {
-  if (!startDate.value || !endDate.value) return;
+  if (!inputValue(startDate) || !inputValue(endDate)) return;
   try {
-    message.textContent = "Loading...";
+    setText(message, "Loading...");
     const data = await apiFetch(`weekly_memory_candidates?${queryString()}`);
     state.groups = data.groups || [];
-    rawCount.textContent = String(data.total_raw || 0);
-    groupCount.textContent = String(data.total_groups || 0);
-    message.textContent = "";
+    setText(rawCount, String(data.total_raw || 0));
+    setText(groupCount, String(data.total_groups || 0));
+    setText(message, "");
     render();
   } catch (error) {
     state.groups = [];
-    rawCount.textContent = "0";
-    groupCount.textContent = "0";
-    message.textContent = error.message;
+    setText(rawCount, "0");
+    setText(groupCount, "0");
+    setText(message, error.message);
     render();
   }
 }
@@ -254,9 +272,9 @@ async function loadWeeklyCandidates() {
 function markdownReport() {
   const kept = state.groups.filter((group) => statusFor(group) !== "rejected");
   const lines = [
-    `# Memory Candidates ${startDate.value} to ${endDate.value}`,
+    `# Memory Candidates ${inputValue(startDate)} to ${inputValue(endDate)}`,
     "",
-    `Raw: ${rawCount.textContent} / Deduped: ${groupCount.textContent}`,
+    `Raw: ${rawCount ? rawCount.textContent : "0"} / Deduped: ${groupCount ? groupCount.textContent : "0"}`,
     "",
   ];
 
@@ -276,35 +294,41 @@ function markdownReport() {
   return lines.join("\n");
 }
 
-loadButton.addEventListener("click", loadWeeklyCandidates);
-exportButton.addEventListener("click", () => {
-  exportText.value = markdownReport();
-  exportDialog.showModal();
-});
+if (loadButton) loadButton.addEventListener("click", loadWeeklyCandidates);
+if (exportButton) {
+  exportButton.addEventListener("click", () => {
+    if (exportText) exportText.value = markdownReport();
+    if (exportDialog) exportDialog.showModal();
+  });
+}
 
-apiToken.addEventListener("change", () => {
-  state.token = apiToken.value.trim();
-  localStorage.setItem("kmlogApiToken", state.token);
-  loadWeeklyCandidates();
-});
+if (apiToken) {
+  apiToken.addEventListener("change", () => {
+    state.token = apiToken.value.trim();
+    localStorage.setItem("kmlogApiToken", state.token);
+    loadWeeklyCandidates();
+  });
+}
 
-candidateList.addEventListener("click", (event) => {
-  const promoteButton = event.target.closest("[data-promote-ids]");
-  if (promoteButton) {
-    openPromoteDialog(promoteButton.dataset.promoteIds);
-    return;
-  }
-  const button = event.target.closest("[data-candidate-ids][data-status]");
-  if (!button) return;
-  const firstId = Number(button.dataset.candidateIds.split(",")[0]);
-  const group = groupByCandidateId(firstId);
-  if (!group) return;
-  updateGroupStatus(group, button.dataset.status);
-});
+if (candidateList) {
+  candidateList.addEventListener("click", (event) => {
+    const promoteButton = event.target.closest("[data-promote-ids]");
+    if (promoteButton) {
+      openPromoteDialog(promoteButton.dataset.promoteIds);
+      return;
+    }
+    const button = event.target.closest("[data-candidate-ids][data-status]");
+    if (!button) return;
+    const firstId = Number(button.dataset.candidateIds.split(",")[0]);
+    const group = groupByCandidateId(firstId);
+    if (!group) return;
+    updateGroupStatus(group, button.dataset.status);
+  });
+}
 
 function openPromoteDialog(idsText) {
   if (!promoteDialog) {
-    message.textContent = "Promote dialog is not available. Refresh the page assets and try again.";
+    setText(message, "Promote dialog is not available. Refresh the page assets and try again.");
     return;
   }
   const firstId = Number(idsText.split(",")[0]);
@@ -312,55 +336,55 @@ function openPromoteDialog(idsText) {
   if (!group) return;
   const item = group.canonical;
   state.activePromoteGroup = group;
-  promoteCandidateIds.value = idsText;
-  promoteTitle.value = item.label || "";
-  promoteContent.value = item.evidence || item.label || "";
-  promoteEvidence.value = item.evidence || "";
-  promoteDomain.value = item.domain || "";
-  promoteFunction.value = item.function || "";
-  promotePrimaryMother.value = item.primary_mother || "";
-  promoteSecondaryMother.value = item.secondary_mother || "";
-  promoteImportance.value = item.importance || "";
-  promoteConfidence.value = item.confidence || "";
-  promoteExplicitness.value = "edited_by_human";
-  promoteReviewer.value = promoteReviewer.value || "human";
+  if (promoteCandidateIds) promoteCandidateIds.value = idsText;
+  if (promoteTitle) promoteTitle.value = item.label || "";
+  if (promoteContent) promoteContent.value = item.evidence || item.label || "";
+  if (promoteEvidence) promoteEvidence.value = item.evidence || "";
+  if (promoteDomain) promoteDomain.value = item.domain || "";
+  if (promoteFunction) promoteFunction.value = item.function || "";
+  if (promotePrimaryMother) promotePrimaryMother.value = item.primary_mother || "";
+  if (promoteSecondaryMother) promoteSecondaryMother.value = item.secondary_mother || "";
+  if (promoteImportance) promoteImportance.value = item.importance || "";
+  if (promoteConfidence) promoteConfidence.value = item.confidence || "";
+  if (promoteExplicitness) promoteExplicitness.value = "edited_by_human";
+  if (promoteReviewer) promoteReviewer.value = promoteReviewer.value || "human";
   promoteDialog.showModal();
 }
 
 function promotePayload() {
   const payload = {
-    candidate_ids: promoteCandidateIds.value.split(",").map((value) => Number(value.trim())).filter(Boolean),
-    title: promoteTitle.value.trim(),
-    content: promoteContent.value.trim(),
-    evidence: promoteEvidence.value.trim(),
-    domain: promoteDomain.value.trim(),
-    function: promoteFunction.value.trim(),
-    primary_mother: promotePrimaryMother.value.trim() || null,
-    secondary_mother: promoteSecondaryMother.value.trim() || null,
-    confidence: promoteConfidence.value || null,
-    explicitness: promoteExplicitness.value,
-    reviewer: promoteReviewer.value.trim() || "human",
+    candidate_ids: inputValue(promoteCandidateIds).split(",").map((value) => Number(value.trim())).filter(Boolean),
+    title: inputValue(promoteTitle).trim(),
+    content: inputValue(promoteContent).trim(),
+    evidence: inputValue(promoteEvidence).trim(),
+    domain: inputValue(promoteDomain).trim(),
+    function: inputValue(promoteFunction).trim(),
+    primary_mother: inputValue(promotePrimaryMother).trim() || null,
+    secondary_mother: inputValue(promoteSecondaryMother).trim() || null,
+    confidence: inputValue(promoteConfidence) || null,
+    explicitness: inputValue(promoteExplicitness),
+    reviewer: inputValue(promoteReviewer).trim() || "human",
   };
-  if (promoteImportance.value) payload.importance = Number(promoteImportance.value);
+  if (inputValue(promoteImportance)) payload.importance = Number(inputValue(promoteImportance));
   return payload;
 }
 
 if (promoteSubmit) {
   promoteSubmit.addEventListener("click", async () => {
-    if (!promoteForm.reportValidity()) return;
+    if (promoteForm && !promoteForm.reportValidity()) return;
     const payload = promotePayload();
     try {
       promoteSubmit.disabled = true;
-      message.textContent = "Promoting candidate...";
+      setText(message, "Promoting candidate...");
       await apiFetch("memory_candidates/promote", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      promoteDialog.close();
-      message.textContent = "Candidate promoted.";
+      if (promoteDialog) promoteDialog.close();
+      setText(message, "Candidate promoted.");
       await loadWeeklyCandidates();
     } catch (error) {
-      message.textContent = error.message;
+      setText(message, error.message);
     } finally {
       promoteSubmit.disabled = false;
     }
