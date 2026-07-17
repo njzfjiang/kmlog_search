@@ -167,12 +167,16 @@ class PromoteMemoryCandidateReq(BaseModel):
     function: Optional[str] = None
     primary_mother: Optional[str] = None
     secondary_mother: Optional[str] = None
+    topic_key: Optional[str] = None
+    layer_role: Optional[str] = None
+    canonical_ref: Optional[str] = None
     importance: Optional[int] = None
     confidence: Optional[str] = None
     explicitness: Optional[str] = "edited_by_human"
     reviewer: Optional[str] = "human"
     reviewed_at: Optional[str] = None
     expires_at: Optional[str] = None
+    review_after: Optional[str] = None
     superseded_by_item_id: Optional[int] = None
     metadata_json: Optional[Any] = None
 
@@ -504,12 +508,16 @@ def api_promote_memory_candidate(
             function=req.function,
             primary_mother=req.primary_mother,
             secondary_mother=req.secondary_mother,
+            topic_key=req.topic_key,
+            layer_role=req.layer_role,
+            canonical_ref=req.canonical_ref,
             importance=req.importance,
             confidence=req.confidence,
             explicitness=req.explicitness,
             reviewer=req.reviewer,
             reviewed_at=req.reviewed_at,
             expires_at=req.expires_at,
+            review_after=req.review_after,
             superseded_by_item_id=req.superseded_by_item_id,
             metadata_json=req.metadata_json,
         )
@@ -526,6 +534,9 @@ def api_list_reviewed_memory_items(
     function: Optional[str] = None,
     primary_mother: Optional[str] = None,
     secondary_mother: Optional[str] = None,
+    topic_key: Optional[str] = None,
+    layer_role: Optional[str] = None,
+    canonical_ref: Optional[str] = None,
     explicitness: Optional[str] = None,
     q: Optional[str] = None,
     include_expired: bool = False,
@@ -546,6 +557,9 @@ def api_list_reviewed_memory_items(
         "function": function,
         "primary_mother": primary_mother,
         "secondary_mother": secondary_mother,
+        "topic_key": topic_key,
+        "layer_role": layer_role,
+        "canonical_ref": canonical_ref,
         "explicitness": explicitness,
         "q": q,
         "include_expired": include_expired,
@@ -557,6 +571,9 @@ def api_list_reviewed_memory_items(
             function=function,
             primary_mother=primary_mother,
             secondary_mother=secondary_mother,
+            topic_key=topic_key,
+            layer_role=layer_role,
+            canonical_ref=canonical_ref,
             explicitness=explicitness,
             q=q,
             include_expired=include_expired,

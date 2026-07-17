@@ -57,6 +57,9 @@ reviewed_memory_items(
   function,
   primary_mother,
   secondary_mother,
+  topic_key,
+  layer_role,
+  canonical_ref,
   importance,
   confidence,
   explicitness,
@@ -68,10 +71,22 @@ reviewed_memory_items(
   created_at,
   updated_at,
   expires_at,
+  review_after,
   superseded_by_item_id,
   metadata_json
 )
 ```
+
+Optional representation fields:
+
+- `topic_key`: stable semantic topic identifier shared by related memory representations.
+- `layer_role`: role of this representation, such as `retrieval_summary`,
+  `canonical_rule`, `boot_anchor`, `event_evidence`, or `temporary_project_state`.
+- `canonical_ref`: pointer to an authoritative representation, such as `mother:F.4.4`.
+- `review_after`: date for re-evaluating memory that may not be durable.
+
+Existing rows are not backfilled; `NULL` remains valid for all four fields.
+List queries may filter by `topic_key`, `layer_role`, and `canonical_ref`.
 
 Provenance table:
 

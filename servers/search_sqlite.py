@@ -252,6 +252,9 @@ def ensure_reviewed_memory_tables(cursor):
           function TEXT NOT NULL,
           primary_mother TEXT,
           secondary_mother TEXT,
+          topic_key TEXT,
+          layer_role TEXT,
+          canonical_ref TEXT,
           importance INTEGER DEFAULT 3,
           confidence TEXT,
           explicitness TEXT,
@@ -263,11 +266,23 @@ def ensure_reviewed_memory_tables(cursor):
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           expires_at TEXT,
+          review_after TIMESTAMP,
           superseded_by_item_id INTEGER,
           metadata_json TEXT,
           FOREIGN KEY(superseded_by_item_id) REFERENCES reviewed_memory_items(id)
         )
     """)
+    reviewed_columns = _table_columns(cursor, "reviewed_memory_items")
+    for column_name, column_type in (
+        ("topic_key", "TEXT"),
+        ("layer_role", "TEXT"),
+        ("canonical_ref", "TEXT"),
+        ("review_after", "TIMESTAMP"),
+    ):
+        if column_name not in reviewed_columns:
+            cursor.execute(
+                f"ALTER TABLE reviewed_memory_items ADD COLUMN {column_name} {column_type}"
+            )
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reviewed_memory_sources (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -288,6 +303,7 @@ def ensure_reviewed_memory_tables(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_domain ON reviewed_memory_items(domain)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_primary_mother ON reviewed_memory_items(primary_mother)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_expires_at ON reviewed_memory_items(expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_status_topic_key ON reviewed_memory_items(status, topic_key)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_item ON reviewed_memory_sources(memory_item_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_candidate ON reviewed_memory_sources(candidate_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviewed_memory_sources_message_pk ON reviewed_memory_sources(message_pk)")
@@ -426,6 +442,9 @@ def _get_reviewed_memory_item(cursor, item_id: int, include_sources: bool = Fals
             function,
             primary_mother,
             secondary_mother,
+            topic_key,
+            layer_role,
+            canonical_ref,
             importance,
             confidence,
             explicitness,
@@ -437,6 +456,7 @@ def _get_reviewed_memory_item(cursor, item_id: int, include_sources: bool = Fals
             created_at,
             updated_at,
             expires_at,
+            review_after,
             superseded_by_item_id,
             metadata_json
         FROM reviewed_memory_items
@@ -535,12 +555,16 @@ def promote_memory_candidate(
     function: str | None = None,
     primary_mother: str | None = None,
     secondary_mother: str | None = None,
+    topic_key: str | None = None,
+    layer_role: str | None = None,
+    canonical_ref: str | None = None,
     importance: int | None = None,
     confidence: str | None = None,
     explicitness: str | None = "edited_by_human",
     reviewer: str | None = "human",
     reviewed_at: str | None = None,
     expires_at: str | None = None,
+    review_after: str | None = None,
     superseded_by_item_id: int | None = None,
     metadata_json=None,
 ) -> dict:
@@ -623,6 +647,9 @@ def promote_memory_candidate(
             "function": function or canonical["function"],
             "primary_mother": primary_mother if primary_mother is not None else canonical.get("primary_mother"),
             "secondary_mother": secondary_mother if secondary_mother is not None else canonical.get("secondary_mother"),
+            "topic_key": topic_key,
+            "layer_role": layer_role,
+            "canonical_ref": canonical_ref,
             "importance": importance if importance is not None else canonical.get("importance"),
             "confidence": confidence if confidence is not None else canonical.get("confidence"),
             "explicitness": explicitness,
@@ -634,6 +661,7 @@ def promote_memory_candidate(
             "created_at": now,
             "updated_at": now,
             "expires_at": expires_at,
+            "review_after": review_after,
             "superseded_by_item_id": superseded_by_item_id,
             "metadata_json": _json_dump(metadata_json),
         }
@@ -647,6 +675,9 @@ def promote_memory_candidate(
                 function,
                 primary_mother,
                 secondary_mother,
+                topic_key,
+                layer_role,
+                canonical_ref,
                 importance,
                 confidence,
                 explicitness,
@@ -658,6 +689,7 @@ def promote_memory_candidate(
                 created_at,
                 updated_at,
                 expires_at,
+                review_after,
                 superseded_by_item_id,
                 metadata_json
             )
@@ -669,6 +701,9 @@ def promote_memory_candidate(
                 :function,
                 :primary_mother,
                 :secondary_mother,
+                :topic_key,
+                :layer_role,
+                :canonical_ref,
                 :importance,
                 :confidence,
                 :explicitness,
@@ -680,6 +715,7 @@ def promote_memory_candidate(
                 :created_at,
                 :updated_at,
                 :expires_at,
+                :review_after,
                 :superseded_by_item_id,
                 :metadata_json
             )
@@ -754,6 +790,9 @@ def list_reviewed_memory_items(
     function: str | None = None,
     primary_mother: str | None = None,
     secondary_mother: str | None = None,
+    topic_key: str | None = None,
+    layer_role: str | None = None,
+    canonical_ref: str | None = None,
     explicitness: str | None = None,
     q: str | None = None,
     include_expired: bool = False,
@@ -765,6 +804,7 @@ def list_reviewed_memory_items(
     try:
         cursor = conn.cursor()
         ensure_reviewed_memory_tables(cursor)
+        conn.commit()
         clauses = []
         params = []
         if item_id is not None:
@@ -785,6 +825,15 @@ def list_reviewed_memory_items(
         if secondary_mother:
             clauses.append("secondary_mother = ?")
             params.append(secondary_mother)
+        if topic_key:
+            clauses.append("topic_key = ?")
+            params.append(topic_key)
+        if layer_role:
+            clauses.append("layer_role = ?")
+            params.append(layer_role)
+        if canonical_ref:
+            clauses.append("canonical_ref = ?")
+            params.append(canonical_ref)
         if explicitness:
             clauses.append("explicitness = ?")
             params.append(explicitness)
@@ -809,6 +858,9 @@ def list_reviewed_memory_items(
                 function,
                 primary_mother,
                 secondary_mother,
+                topic_key,
+                layer_role,
+                canonical_ref,
                 importance,
                 confidence,
                 explicitness,
@@ -820,6 +872,7 @@ def list_reviewed_memory_items(
                 created_at,
                 updated_at,
                 expires_at,
+                review_after,
                 superseded_by_item_id,
                 metadata_json
             FROM reviewed_memory_items
@@ -870,6 +923,7 @@ def get_reviewed_memory_by_message(
     try:
         cursor = conn.cursor()
         ensure_reviewed_memory_tables(cursor)
+        conn.commit()
 
         message = None
         if message_pk is not None:
@@ -914,6 +968,9 @@ def get_reviewed_memory_by_message(
                 i.function,
                 i.primary_mother,
                 i.secondary_mother,
+                i.topic_key,
+                i.layer_role,
+                i.canonical_ref,
                 i.importance,
                 i.confidence,
                 i.explicitness,
@@ -925,6 +982,7 @@ def get_reviewed_memory_by_message(
                 i.created_at,
                 i.updated_at,
                 i.expires_at,
+                i.review_after,
                 i.superseded_by_item_id,
                 i.metadata_json
             FROM reviewed_memory_sources s

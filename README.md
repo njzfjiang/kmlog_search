@@ -373,10 +373,11 @@ retrieval. They are separate from raw candidates:
 reviewed_memory_items(
   id, title, content, evidence,
   domain, function, primary_mother, secondary_mother,
+  topic_key, layer_role, canonical_ref,
   importance, confidence, explicitness,
   status, source_candidate_ids_json, source_message_ids_json,
   reviewer, reviewed_at, created_at, updated_at,
-  expires_at, superseded_by_item_id, metadata_json
+  expires_at, review_after, superseded_by_item_id, metadata_json
 )
 
 reviewed_memory_sources(
@@ -384,6 +385,15 @@ reviewed_memory_sources(
   evidence, source_role, created_at
 )
 ```
+
+Optional reviewed-memory representation fields are nullable and are not
+backfilled for existing rows:
+
+- `topic_key`: stable semantic topic identifier.
+- `layer_role`: representation role, for example `retrieval_summary`,
+  `canonical_rule`, `boot_anchor`, `event_evidence`, or `temporary_project_state`.
+- `canonical_ref`: pointer to a canonical source, for example `mother:F.4.4`.
+- `review_after`: date for re-evaluating non-durable memory.
 
 `reviewed_memory_items.status` is limited to the curated-item lifecycle:
 `active`, `archived`, or `superseded`. Expired items are excluded from normal
