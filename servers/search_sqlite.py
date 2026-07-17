@@ -118,6 +118,14 @@ if not DB_PATH.is_absolute():
     DB_PATH = PROJECT_ROOT / DB_PATH
 
 
+class ReviewedMemoryNotFoundError(ValueError):
+    pass
+
+
+class ReviewedMemoryConflictError(ValueError):
+    pass
+
+
 def get_connection():
     if not DB_PATH.exists():
         raise RuntimeError(f"SQLite DB not found: {DB_PATH}")
@@ -542,6 +550,145 @@ def update_memory_candidate_status(
             (candidate_id,),
         ).fetchone()
         return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_reviewed_memory_item(item_id: int, updates: dict) -> dict:
+    allowed_fields = {
+        "title",
+        "content",
+        "evidence",
+        "topic_key",
+        "layer_role",
+        "canonical_ref",
+        "importance",
+        "confidence",
+        "explicitness",
+        "expires_at",
+        "review_after",
+        "metadata_json",
+    }
+    unknown_fields = set(updates) - allowed_fields
+    if unknown_fields:
+        raise ValueError(f"Unsupported reviewed memory fields: {sorted(unknown_fields)}")
+    if not updates:
+        raise ValueError("At least one field is required")
+
+    values = dict(updates)
+    for field in ("title", "content"):
+        if field in values and (
+            values[field] is None or not str(values[field]).strip()
+        ):
+            raise ValueError(f"{field} must not be empty")
+    if "importance" in values and values["importance"] is not None:
+        if values["importance"] < 1 or values["importance"] > 5:
+            raise ValueError("importance must be between 1 and 5")
+    if "metadata_json" in values:
+        values["metadata_json"] = _json_dump(values["metadata_json"])
+    values["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+        assignments = ", ".join(f"{field} = ?" for field in values)
+        params = [*values.values(), item_id]
+        cursor.execute(
+            f"UPDATE reviewed_memory_items SET {assignments} WHERE id = ?",
+            params,
+        )
+        if cursor.rowcount == 0:
+            raise ReviewedMemoryNotFoundError(f"Reviewed memory item not found: {item_id}")
+        conn.commit()
+        return _get_reviewed_memory_item(cursor, item_id, include_sources=True)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_reviewed_memory_status(
+    item_id: int,
+    status: str,
+    superseded_by_item_id: int | None = None,
+) -> dict:
+    allowed_transitions = {
+        "active": {"archived", "superseded"},
+        "archived": {"active"},
+        "superseded": {"active"},
+    }
+    if status not in allowed_transitions:
+        raise ValueError(f"Invalid reviewed memory status: {status}")
+    if status == "superseded" and superseded_by_item_id is None:
+        raise ValueError("superseded_by_item_id is required when status is superseded")
+    if status != "superseded" and superseded_by_item_id is not None:
+        raise ValueError("superseded_by_item_id is only valid when status is superseded")
+    if superseded_by_item_id == item_id:
+        raise ReviewedMemoryConflictError("A reviewed memory item cannot supersede itself")
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        ensure_reviewed_memory_tables(cursor)
+        conn.commit()
+        cursor.execute("BEGIN IMMEDIATE")
+        current = cursor.execute(
+            "SELECT id, status, superseded_by_item_id FROM reviewed_memory_items WHERE id = ?",
+            (item_id,),
+        ).fetchone()
+        if current is None:
+            raise ReviewedMemoryNotFoundError(f"Reviewed memory item not found: {item_id}")
+
+        if status == current["status"]:
+            if status == "superseded" and superseded_by_item_id != current["superseded_by_item_id"]:
+                raise ReviewedMemoryConflictError(
+                    "Restore the item to active before changing its superseding item"
+                )
+            conn.commit()
+            return _get_reviewed_memory_item(cursor, item_id, include_sources=True)
+
+        if status not in allowed_transitions[current["status"]]:
+            raise ReviewedMemoryConflictError(
+                f"Invalid reviewed memory status transition: {current['status']} -> {status}"
+            )
+
+        if status == "superseded":
+            replacement = cursor.execute(
+                "SELECT id, status FROM reviewed_memory_items WHERE id = ?",
+                (superseded_by_item_id,),
+            ).fetchone()
+            if replacement is None:
+                raise ReviewedMemoryNotFoundError(
+                    f"Superseding reviewed memory item not found: {superseded_by_item_id}"
+                )
+            if replacement["status"] != "active":
+                raise ReviewedMemoryConflictError(
+                    "superseded_by_item_id must reference an active reviewed memory item"
+                )
+            next_superseded_by = superseded_by_item_id
+        else:
+            next_superseded_by = None
+
+        cursor.execute(
+            """
+            UPDATE reviewed_memory_items
+            SET status = ?, superseded_by_item_id = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                next_superseded_by,
+                datetime.now(timezone.utc).isoformat(),
+                item_id,
+            ),
+        )
+        conn.commit()
+        return _get_reviewed_memory_item(cursor, item_id, include_sources=True)
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

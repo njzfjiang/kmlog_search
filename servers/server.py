@@ -44,6 +44,8 @@ async def _call_api(endpoint: str, payload: dict, method: str = "POST") -> dict:
     async with httpx.AsyncClient(timeout=30.0) as client:
         if method.upper() == "GET":
             resp = await client.get(f"{API_BASE_URL}{endpoint}", params=payload, headers=headers)
+        elif method.upper() == "PATCH":
+            resp = await client.patch(f"{API_BASE_URL}{endpoint}", json=payload, headers=headers)
         else:
             resp = await client.post(f"{API_BASE_URL}{endpoint}", json=payload, headers=headers)
         resp.raise_for_status()
@@ -331,6 +333,34 @@ async def get_reviewed_memory_items(
     }
     payload.update({key: value for key, value in optional_values.items() if value is not None})
     return await _call_api("/reviewed_memory_items", payload, method="GET")
+
+@mcp.tool
+async def update_reviewed_memory_item(item_id: int, updates: dict) -> dict:
+    """
+    Edit curated reviewed-memory fields while preserving source provenance.
+
+    Use an updates object so explicit null values can clear nullable fields.
+    """
+    return await _call_api(
+        f"/reviewed_memory_items/{item_id}",
+        updates,
+        method="PATCH",
+    )
+
+@mcp.tool
+async def update_reviewed_memory_status(
+    item_id: int,
+    status: str,
+    superseded_by_item_id: Optional[int] = None,
+) -> dict:
+    """Archive, supersede, or restore a reviewed-memory item."""
+    payload = {"status": status}
+    if superseded_by_item_id is not None:
+        payload["superseded_by_item_id"] = superseded_by_item_id
+    return await _call_api(
+        f"/reviewed_memory_items/{item_id}/status",
+        payload,
+    )
 
 @mcp.tool
 async def get_reviewed_memory_by_message(

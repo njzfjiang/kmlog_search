@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Any, Optional, List
 
 try:
@@ -42,12 +42,16 @@ if SEARCH_BACKEND == "supabase":
     list_weekly_memory_candidates = None
     list_wishes = None
     promote_memory_candidate = None
+    update_reviewed_memory_item = None
+    update_reviewed_memory_status = None
     search_mother_sections = None
     update_memory_candidate_status = None
     update_wish_status = None
 else:
     try:
         from search_sqlite import (
+            ReviewedMemoryConflictError,
+            ReviewedMemoryNotFoundError,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -69,12 +73,16 @@ else:
             search_mother_sections,
             search_messages,
             update_memory_candidate_status,
+            update_reviewed_memory_item,
+            update_reviewed_memory_status,
             update_wish_status,
         )
     except ModuleNotFoundError as exc:
         if exc.name != "search_sqlite":
             raise
         from servers.search_sqlite import (
+            ReviewedMemoryConflictError,
+            ReviewedMemoryNotFoundError,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -96,6 +104,8 @@ else:
             search_mother_sections,
             search_messages,
             update_memory_candidate_status,
+            update_reviewed_memory_item,
+            update_reviewed_memory_status,
             update_wish_status,
         )
 
@@ -181,6 +191,30 @@ class PromoteMemoryCandidateReq(BaseModel):
     metadata_json: Optional[Any] = None
 
 
+class UpdateReviewedMemoryItemReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = None
+    content: Optional[str] = None
+    evidence: Optional[str] = None
+    topic_key: Optional[str] = None
+    layer_role: Optional[str] = None
+    canonical_ref: Optional[str] = None
+    importance: Optional[int] = None
+    confidence: Optional[str] = None
+    explicitness: Optional[str] = None
+    expires_at: Optional[str] = None
+    review_after: Optional[str] = None
+    metadata_json: Optional[Any] = None
+
+
+class UpdateReviewedMemoryStatusReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    superseded_by_item_id: Optional[int] = None
+
+
 class WishReq(BaseModel):
     owner: str
     scope: str
@@ -242,6 +276,8 @@ def _ensure_reviewed_memory_supported() -> None:
         or list_reviewed_memory_items is None
         or promote_memory_candidate is None
         or update_memory_candidate_status is None
+        or update_reviewed_memory_item is None
+        or update_reviewed_memory_status is None
     ):
         raise HTTPException(status_code=501, detail="Reviewed memory is only implemented for the sqlite backend")
 
@@ -523,6 +559,68 @@ def api_promote_memory_candidate(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@app.patch("/reviewed_memory_items/{item_id}")
+def api_update_reviewed_memory_item(
+    item_id: int,
+    req: UpdateReviewedMemoryItemReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    updates = req.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="At least one field is required")
+    for field in ("title", "content"):
+        if field in updates and (
+            updates[field] is None or not str(updates[field]).strip()
+        ):
+            raise HTTPException(status_code=400, detail=f"{field} must not be empty")
+    if "importance" in updates and updates["importance"] is not None:
+        if updates["importance"] < 1 or updates["importance"] > 5:
+            raise HTTPException(status_code=400, detail="importance must be between 1 and 5")
+    try:
+        item = update_reviewed_memory_item(item_id, updates)
+    except ReviewedMemoryNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": item}
+
+
+@app.post("/reviewed_memory_items/{item_id}/status")
+def api_update_reviewed_memory_status(
+    item_id: int,
+    req: UpdateReviewedMemoryStatusReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    _validate_choice("status", req.status, REVIEWED_MEMORY_STATUSES)
+    if req.status == "superseded" and req.superseded_by_item_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="superseded_by_item_id is required when status is superseded",
+        )
+    if req.status != "superseded" and req.superseded_by_item_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="superseded_by_item_id is only valid when status is superseded",
+        )
+    try:
+        item = update_reviewed_memory_status(
+            item_id,
+            req.status,
+            req.superseded_by_item_id,
+        )
+    except ReviewedMemoryNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewedMemoryConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"item": item}
 
 

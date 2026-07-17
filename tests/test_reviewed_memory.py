@@ -2,6 +2,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SERVERS_DIR = PROJECT_ROOT / "servers"
@@ -9,6 +12,7 @@ if str(SERVERS_DIR) not in sys.path:
     sys.path.insert(0, str(SERVERS_DIR))
 
 import search_sqlite  # noqa: E402
+from servers import app as app_module  # noqa: E402
 
 
 def _setup_reviewed_memory_db(db_path: Path) -> None:
@@ -272,6 +276,136 @@ def test_promote_memory_candidate_old_caller_omits_new_fields(tmp_path, monkeypa
     assert item["layer_role"] is None
     assert item["canonical_ref"] is None
     assert item["review_after"] is None
+
+
+def test_update_reviewed_memory_item_preserves_review_metadata_and_sources(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "chat_search.db"
+    _setup_reviewed_memory_db(db_path)
+    monkeypatch.setattr(search_sqlite, "DB_PATH", db_path)
+
+    original = search_sqlite.promote_memory_candidate(
+        [10],
+        content="Original content",
+        expires_at="2026-08-01",
+        review_after="2026-08-02",
+    )
+    source_ids = [source["id"] for source in original["sources"]]
+
+    updated = search_sqlite.update_reviewed_memory_item(
+        original["id"],
+        {
+            "content": "Edited content",
+            "evidence": "Edited evidence",
+            "topic_key": "profile.communication_style",
+            "layer_role": "retrieval_summary",
+            "canonical_ref": "mother:F.4.4",
+            "importance": 3,
+            "confidence": "high",
+            "explicitness": "edited_by_human",
+            "expires_at": None,
+            "review_after": "2026-08-16",
+            "metadata_json": {},
+        },
+    )
+
+    assert updated["title"] == original["title"]
+    assert updated["content"] == "Edited content"
+    assert updated["evidence"] == "Edited evidence"
+    assert updated["expires_at"] is None
+    assert updated["review_after"] == "2026-08-16"
+    assert updated["metadata_json"] == "{}"
+    assert updated["reviewed_at"] == original["reviewed_at"]
+    assert updated["updated_at"] >= original["updated_at"]
+    assert [source["id"] for source in updated["sources"]] == source_ids
+
+
+def test_update_reviewed_memory_status_enforces_transitions_and_active_replacement(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "chat_search.db"
+    _setup_reviewed_memory_db(db_path)
+    monkeypatch.setattr(search_sqlite, "DB_PATH", db_path)
+
+    item = search_sqlite.promote_memory_candidate([10], title="Original")
+    replacement = search_sqlite.promote_memory_candidate([10], title="Replacement")
+    source_ids = [source["id"] for source in item["sources"]]
+
+    with pytest.raises(search_sqlite.ReviewedMemoryConflictError):
+        search_sqlite.update_reviewed_memory_status(
+            item["id"],
+            "superseded",
+            item["id"],
+        )
+
+    search_sqlite.update_reviewed_memory_status(replacement["id"], "archived")
+    with pytest.raises(search_sqlite.ReviewedMemoryConflictError):
+        search_sqlite.update_reviewed_memory_status(
+            item["id"],
+            "superseded",
+            replacement["id"],
+        )
+
+    search_sqlite.update_reviewed_memory_status(replacement["id"], "active")
+    superseded = search_sqlite.update_reviewed_memory_status(
+        item["id"],
+        "superseded",
+        replacement["id"],
+    )
+    assert superseded["status"] == "superseded"
+    assert superseded["superseded_by_item_id"] == replacement["id"]
+    assert superseded["reviewed_at"] == item["reviewed_at"]
+    assert [source["id"] for source in superseded["sources"]] == source_ids
+
+    restored = search_sqlite.update_reviewed_memory_status(item["id"], "active")
+    assert restored["status"] == "active"
+    assert restored["superseded_by_item_id"] is None
+
+    archived = search_sqlite.update_reviewed_memory_status(item["id"], "archived")
+    assert archived["status"] == "archived"
+    with pytest.raises(search_sqlite.ReviewedMemoryConflictError):
+        search_sqlite.update_reviewed_memory_status(
+            item["id"],
+            "superseded",
+            replacement["id"],
+        )
+
+
+def test_reviewed_memory_update_http_contract(tmp_path, monkeypatch):
+    db_path = tmp_path / "chat_search.db"
+    _setup_reviewed_memory_db(db_path)
+    monkeypatch.setattr(search_sqlite, "DB_PATH", db_path)
+    monkeypatch.setattr(app_module, "APP_TOKEN", "")
+    item = search_sqlite.promote_memory_candidate(
+        [10],
+        content="Original",
+        expires_at="2026-08-01",
+    )
+    client = TestClient(app_module.app)
+
+    response = client.patch(
+        f"/reviewed_memory_items/{item['id']}",
+        json={"content": "Edited", "expires_at": None},
+    )
+    assert response.status_code == 200
+    assert response.json()["item"]["content"] == "Edited"
+    assert response.json()["item"]["expires_at"] is None
+
+    assert client.patch(
+        f"/reviewed_memory_items/{item['id']}",
+        json={},
+    ).status_code == 400
+    assert client.patch(
+        f"/reviewed_memory_items/{item['id']}",
+        json={"unknown_field": "value"},
+    ).status_code == 422
+    assert client.post(
+        f"/reviewed_memory_items/{item['id']}/status",
+        json={"status": "superseded", "superseded_by_item_id": item["id"]},
+    ).status_code == 409
 
 
 def test_update_memory_candidate_status(tmp_path, monkeypatch):

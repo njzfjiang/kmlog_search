@@ -51,6 +51,13 @@ async def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, 
         r.raise_for_status()
         return r.json()
 
+async def _patch(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{BASE_URL}{path}"
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.patch(url, headers=_headers(), json=payload)
+        r.raise_for_status()
+        return r.json()
+
 @mcp.tool()
 async def healthz() -> Dict[str, Any]:
     """Check if the KMLog Search API is alive."""
@@ -261,6 +268,26 @@ async def get_reviewed_memory_items(
     }
     params.update({key: value for key, value in optional_values.items() if value is not None})
     return await _get("/reviewed_memory_items", params)
+
+@mcp.tool()
+async def update_reviewed_memory_item(
+    item_id: int,
+    updates: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Edit curated fields without changing reviewed-memory provenance."""
+    return await _patch(f"/reviewed_memory_items/{item_id}", updates)
+
+@mcp.tool()
+async def update_reviewed_memory_status(
+    item_id: int,
+    status: str,
+    superseded_by_item_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Archive, supersede, or restore a reviewed-memory item."""
+    payload: Dict[str, Any] = {"status": status}
+    if superseded_by_item_id is not None:
+        payload["superseded_by_item_id"] = superseded_by_item_id
+    return await _post(f"/reviewed_memory_items/{item_id}/status", payload)
 
 @mcp.tool()
 async def get_reviewed_memory_by_message(

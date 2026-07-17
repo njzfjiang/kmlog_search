@@ -124,6 +124,11 @@ from source messages without scanning JSON arrays.
 - `archived`: retained for audit, excluded from normal retrieval.
 - `superseded`: replaced by another reviewed item.
 
+Allowed lifecycle transitions are `active -> archived`,
+`active -> superseded`, and restoration from either non-active state to
+`active`. Superseding requires `superseded_by_item_id` to reference a different,
+currently active reviewed item. Restoring or archiving clears that reference.
+
 Expired items are excluded from normal lookup unless `include_expired=true`.
 
 ## Weekly review flow
@@ -233,6 +238,44 @@ GET /reviewed_memory_items?status=active&function=daily_context&limit=20
 GET /reviewed_memory_items?q=keyword&include_sources=true&limit=20
 ```
 
+Edit a reviewed item without changing its provenance:
+
+```text
+PATCH /reviewed_memory_items/12
+```
+
+```json
+{
+  "content": "Edited curated memory text.",
+  "topic_key": "profile.communication_style",
+  "layer_role": "retrieval_summary",
+  "canonical_ref": "mother:F.4.4",
+  "importance": 3,
+  "confidence": "high",
+  "explicitness": "edited_by_human",
+  "expires_at": null,
+  "review_after": "2026-08-16",
+  "metadata_json": {}
+}
+```
+
+Only provided fields are changed. Explicit `null` clears a nullable field.
+Edits refresh `updated_at` while preserving `reviewed_at`, source snapshots,
+and rows in `reviewed_memory_sources`.
+
+Archive, supersede, or restore an item:
+
+```text
+POST /reviewed_memory_items/12/status
+```
+
+```json
+{
+  "status": "superseded",
+  "superseded_by_item_id": 18
+}
+```
+
 Reverse lookup from source message:
 
 ```text
@@ -252,6 +295,8 @@ The MCP wrappers expose:
 - `update_memory_candidate_status`
 - `promote_memory_candidate`
 - `get_reviewed_memory_items`
+- `update_reviewed_memory_item`
+- `update_reviewed_memory_status`
 - `get_reviewed_memory_by_message`
 
 Typical MCP flow:
@@ -261,6 +306,8 @@ get_weekly_memory_candidates
   -> update_memory_candidate_status for rejected/deferred/accepted items
   -> promote_memory_candidate for edited curated items
   -> get_reviewed_memory_items to verify retrieval
+  -> update_reviewed_memory_item for later corrections
+  -> update_reviewed_memory_status for archive/supersede/restore decisions
   -> get_reviewed_memory_by_message to audit provenance
 ```
 

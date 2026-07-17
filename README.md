@@ -229,6 +229,8 @@ GET  /wishes
 POST /complete_wish/{id}
 POST /memory_candidates/{id}/status
 POST /memory_candidates/promote
+PATCH /reviewed_memory_items/{id}
+POST /reviewed_memory_items/{id}/status
 POST /memory/route
 POST /search
 POST /search_by_date
@@ -424,6 +426,8 @@ The MCP wrappers expose matching tools:
 - `update_memory_candidate_status`
 - `promote_memory_candidate`
 - `get_reviewed_memory_items`
+- `update_reviewed_memory_item`
+- `update_reviewed_memory_status`
 - `get_reviewed_memory_by_message`
 - `get_conversation_summary`
 
