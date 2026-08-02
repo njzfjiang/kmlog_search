@@ -36,12 +36,15 @@ if SEARCH_BACKEND == "supabase":
     list_core_anchors = None
     list_daily_summaries = None
     get_mother_section = None
+    get_mother_source_info = None
     get_reviewed_memory_by_message = None
     list_reviewed_memory_items = None
     route_mother_memory = None
     list_weekly_memory_candidates = None
     list_wishes = None
     promote_memory_candidate = None
+    apply_mother_memory_update = None
+    preview_mother_memory_update = None
     update_reviewed_memory_item = None
     update_reviewed_memory_status = None
     search_mother_sections = None
@@ -50,8 +53,10 @@ if SEARCH_BACKEND == "supabase":
 else:
     try:
         from search_sqlite import (
+            MotherMemoryRevisionConflictError,
             ReviewedMemoryConflictError,
             ReviewedMemoryNotFoundError,
+            apply_mother_memory_update,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -59,6 +64,7 @@ else:
             get_conversation_summary,
             get_daily_summary,
             get_mother_section,
+            get_mother_source_info,
             get_reviewed_memory_by_message,
             list_core_anchors,
             list_daily_memory_candidates,
@@ -68,6 +74,7 @@ else:
             list_weekly_memory_candidates,
             list_wishes,
             promote_memory_candidate,
+            preview_mother_memory_update,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
@@ -81,8 +88,10 @@ else:
         if exc.name != "search_sqlite":
             raise
         from servers.search_sqlite import (
+            MotherMemoryRevisionConflictError,
             ReviewedMemoryConflictError,
             ReviewedMemoryNotFoundError,
+            apply_mother_memory_update,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -90,6 +99,7 @@ else:
             get_conversation_summary,
             get_daily_summary,
             get_mother_section,
+            get_mother_source_info,
             get_reviewed_memory_by_message,
             list_core_anchors,
             list_daily_memory_candidates,
@@ -99,6 +109,7 @@ else:
             list_weekly_memory_candidates,
             list_wishes,
             promote_memory_candidate,
+            preview_mother_memory_update,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
@@ -110,6 +121,7 @@ else:
         )
 
 APP_TOKEN = os.getenv("SEARCH_API_TOKEN", "")
+MOTHER_WRITE_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or APP_TOKEN
 DISABLE_DOCS = os.getenv("KMLOG_DISABLE_DOCS", "").strip().lower() in {"1", "true", "yes"}
 STATIC_DIR = SERVER_DIR / "static"
 
@@ -141,6 +153,13 @@ def auth(x_api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def mother_write_auth(x_api_key: Optional[str]) -> None:
+    if not MOTHER_WRITE_TOKEN:
+        return
+    if not x_api_key or x_api_key != MOTHER_WRITE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 class SearchReq(BaseModel):
     query: str
     limit: int = 10
@@ -162,6 +181,14 @@ class MemoryRouteReq(BaseModel):
     mode: Optional[str] = None
     task_hint: Optional[str] = None
     limit: int = 8
+
+
+class MotherMemoryUpdateReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: str
+    operations: List[dict[str, Any]]
+    actor: Optional[str] = None
 
 
 class MemoryCandidateStatusReq(BaseModel):
@@ -292,8 +319,11 @@ def _ensure_mother_memory_supported() -> None:
         SEARCH_BACKEND != "sqlite"
         or list_mother_toc is None
         or get_mother_section is None
+        or get_mother_source_info is None
         or search_mother_sections is None
         or route_mother_memory is None
+        or apply_mother_memory_update is None
+        or preview_mother_memory_update is None
     ):
         raise HTTPException(status_code=501, detail="Mother memory is only implemented for the sqlite backend")
 
@@ -758,6 +788,58 @@ def api_list_core_anchors(
         "q": q,
         "results": results,
     }
+
+
+@app.get("/memory/source")
+def api_memory_source(x_api_key: Optional[str] = Header(default=None)):
+    auth(x_api_key)
+    _ensure_mother_memory_supported()
+    return get_mother_source_info()
+
+
+@app.post("/memory/updates/preview")
+def api_preview_mother_memory_update(
+    req: MotherMemoryUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    mother_write_auth(x_api_key)
+    _ensure_mother_memory_supported()
+    if not req.operations:
+        raise HTTPException(status_code=400, detail="operations must not be empty")
+    if len(req.operations) > 100:
+        raise HTTPException(status_code=400, detail="operations must contain at most 100 items")
+    try:
+        return preview_mother_memory_update(
+            expected_revision=req.expected_revision,
+            operations=req.operations,
+        )
+    except MotherMemoryRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/memory/updates/apply")
+def api_apply_mother_memory_update(
+    req: MotherMemoryUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    mother_write_auth(x_api_key)
+    _ensure_mother_memory_supported()
+    if not req.operations:
+        raise HTTPException(status_code=400, detail="operations must not be empty")
+    if len(req.operations) > 100:
+        raise HTTPException(status_code=400, detail="operations must contain at most 100 items")
+    try:
+        return apply_mother_memory_update(
+            expected_revision=req.expected_revision,
+            operations=req.operations,
+            actor=req.actor,
+        )
+    except MotherMemoryRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/memory/toc")

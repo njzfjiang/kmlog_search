@@ -28,19 +28,25 @@ API_TOKEN = (
     or os.getenv("SEARCH_API_TOKEN")
     or ""
 )
+MOTHER_WRITE_API_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_TOKEN
 
 mcp = FastMCP("kmlog_search")
 
-def _headers() -> Dict[str, str]:
+def _headers(api_token: Optional[str] = None) -> Dict[str, str]:
     h = {"Content-Type": "application/json"}
-    if API_TOKEN:
-        h["X-API-KEY"] = API_TOKEN
+    token = API_TOKEN if api_token is None else api_token
+    if token:
+        h["X-API-KEY"] = token
     return h
 
-async def _post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def _post(
+    path: str,
+    payload: Dict[str, Any],
+    api_token: Optional[str] = None,
+) -> Dict[str, Any]:
     url = f"{BASE_URL}{path}"
     async with httpx.AsyncClient(timeout=20.0) as client:
-        r = await client.post(url, headers=_headers(), json=payload)
+        r = await client.post(url, headers=_headers(api_token), json=payload)
         r.raise_for_status()
         return r.json()
 
@@ -345,6 +351,42 @@ async def get_core_anchors(
 async def get_mother_toc() -> Dict[str, Any]:
     """Read the mother markdown memory table of contents."""
     return await _get("/memory/toc")
+
+@mcp.tool()
+async def get_mother_source() -> Dict[str, Any]:
+    """Read the mother Markdown revision required for safe writes."""
+    return await _get("/memory/source")
+
+@mcp.tool()
+async def preview_mother_memory_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Validate mother-memory operations and return a unified diff without writing."""
+    return await _post(
+        "/memory/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+        api_token=MOTHER_WRITE_API_TOKEN,
+    )
+
+@mcp.tool()
+async def apply_mother_memory_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Atomically apply validated operations to the mother Markdown source."""
+    payload: Dict[str, Any] = {
+        "expected_revision": expected_revision,
+        "operations": operations,
+    }
+    if actor:
+        payload["actor"] = actor
+    return await _post(
+        "/memory/updates/apply",
+        payload,
+        api_token=MOTHER_WRITE_API_TOKEN,
+    )
 
 @mcp.tool()
 async def get_mother_section(

@@ -101,6 +101,7 @@ Backing tables:
 ```sql
 memory_mother_sections(path, title, level, content, source_file, updated_at)
 memory_mother_toc(path, title, parent_path, order_index)
+memory_mother_write_log(before_revision, after_revision, operations_json, actor, created_at)
 ```
 
 These mother memory tables intentionally do not use the raw-turn `kind`
@@ -111,18 +112,32 @@ HTTP endpoints:
 
 ```text
 GET /memory/toc
+GET /memory/source
 GET /memory/section?path=F.2
 GET /memory/section?path=I-1&include_children=true
 GET /memory/search?q=canonical&scope=F
 POST /memory/route
+POST /memory/updates/preview
+POST /memory/updates/apply
 ```
 
-MCP wrappers expose matching read-only tools:
+MCP wrappers expose matching read and controlled-write tools:
 
 - `get_mother_toc`
+- `get_mother_source`
 - `get_mother_section`
 - `search_mother_memory`
 - `route_mother_memory`
+- `preview_mother_memory_update`
+- `apply_mother_memory_update`
+
+The Markdown file remains the source of truth; SQLite mother tables are derived
+read caches. Writes use a SHA-256 `expected_revision`, validate the complete
+result, create a timestamped backup under `mother/.backups`, atomically replace
+the Markdown file, refresh SQLite, and append an audit row to
+`memory_mother_write_log`. Supported operations are `replace_content`,
+`append_content`, `update_title`, and `create_section`. See
+[`docs/mother_memory_write_workflow.md`](docs/mother_memory_write_workflow.md).
 
 `/memory/route` is a deterministic intent router, not RAG. It suggests section
 paths and returns matching section rows with `inject: false`:
@@ -203,6 +218,8 @@ reviewed items by `messages.id` or external `messages.message_id`.
 Useful environment variables:
 
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
+- `KMLOG_MOTHER_WRITE_TOKEN`: optional dedicated token for mother Markdown
+  preview/apply calls; falls back to `SEARCH_API_TOKEN`.
 - `KMLOG_SEARCH_BACKEND`: `sqlite` by default. Set to `supabase` only for the legacy backend.
 - `KMLOG_SQLITE_DB`: optional custom path to the SQLite database.
 - `KMLOG_DISABLE_DOCS`: set to `1` on public deployments to disable `/docs`, `/redoc`, and `/openapi.json`.
@@ -218,6 +235,7 @@ GET  /daily_summaries
 GET  /daily_summary
 GET  /memory/search
 GET  /memory/section
+GET  /memory/source
 GET  /memory/toc
 GET  /memory_week
 GET  /reviewed_memory
@@ -232,6 +250,8 @@ POST /memory_candidates/promote
 PATCH /reviewed_memory_items/{id}
 POST /reviewed_memory_items/{id}/status
 POST /memory/route
+POST /memory/updates/preview
+POST /memory/updates/apply
 POST /search
 POST /search_by_date
 POST /wish

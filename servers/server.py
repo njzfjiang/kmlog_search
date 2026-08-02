@@ -29,17 +29,23 @@ API_KEY = (
     or os.getenv("SEARCH_API_TOKEN")
     or ""
 )
+MOTHER_WRITE_API_KEY = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_KEY
 
 if not API_KEY:
     print("Warning: KMLOG_API_KEY/KMLOG_SEARCH_API_TOKEN/SEARCH_API_TOKEN not set", file=sys.stderr)
 
 mcp = FastMCP("KMLog Search")
 
-async def _call_api(endpoint: str, payload: dict, method: str = "POST") -> dict:
+async def _call_api(
+    endpoint: str,
+    payload: dict,
+    method: str = "POST",
+    api_key: Optional[str] = None,
+) -> dict:
     """内部函数：调用 KMLog API"""
     headers = {
         "Content-Type": "application/json",
-        "X-API-Key": API_KEY
+        "X-API-Key": API_KEY if api_key is None else api_key
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         if method.upper() == "GET":
@@ -438,6 +444,42 @@ async def get_mother_toc() -> dict:
     读取 mother markdown 记忆库目录。
     """
     return await _call_api("/memory/toc", {}, method="GET")
+
+@mcp.tool
+async def get_mother_source() -> dict:
+    """读取 mother Markdown revision，用于安全写入。"""
+    return await _call_api("/memory/source", {}, method="GET")
+
+@mcp.tool
+async def preview_mother_memory_update(
+    expected_revision: str,
+    operations: List[dict],
+) -> dict:
+    """验证 mother memory operations 并返回 diff，不写入文件。"""
+    return await _call_api(
+        "/memory/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+        api_key=MOTHER_WRITE_API_KEY,
+    )
+
+@mcp.tool
+async def apply_mother_memory_update(
+    expected_revision: str,
+    operations: List[dict],
+    actor: Optional[str] = None,
+) -> dict:
+    """原子写入 mother Markdown，并刷新 SQLite cache。"""
+    payload = {
+        "expected_revision": expected_revision,
+        "operations": operations,
+    }
+    if actor:
+        payload["actor"] = actor
+    return await _call_api(
+        "/memory/updates/apply",
+        payload,
+        api_key=MOTHER_WRITE_API_KEY,
+    )
 
 @mcp.tool
 async def get_mother_section(

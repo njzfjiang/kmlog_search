@@ -2,6 +2,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SERVERS_DIR = PROJECT_ROOT / "servers"
@@ -9,6 +12,7 @@ if str(SERVERS_DIR) not in sys.path:
     sys.path.insert(0, str(SERVERS_DIR))
 
 import search_sqlite  # noqa: E402
+from servers import app as app_module  # noqa: E402
 
 
 def test_mother_markdown_ingestion_and_search(tmp_path, monkeypatch):
@@ -226,3 +230,191 @@ Grandchild text.
         "content"
     ].index("##### A.1.1. Grandchild")
     assert "Grandchild text." in expanded["content"]
+
+
+def _setup_writable_mother(tmp_path, monkeypatch):
+    db_path = tmp_path / "chat_search.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    mother_path = tmp_path / "mother.md"
+    mother_path.write_text(
+        """---
+last updated: 2026-08-02
+---
+### A. Alpha
+Alpha own content.
+
+#### 1. First child
+First child content.
+
+##### 1. Grandchild
+Grandchild content.
+
+#### A.2. Second child
+Second child content.
+
+### B. Beta
+Beta content.
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(search_sqlite, "DB_PATH", db_path)
+    monkeypatch.setattr(search_sqlite, "DEFAULT_MOTHER_MEMORY_PATH", mother_path)
+    return db_path, mother_path
+
+
+def test_preview_mother_update_preserves_file_and_descendants(tmp_path, monkeypatch):
+    _, mother_path = _setup_writable_mother(tmp_path, monkeypatch)
+    before = mother_path.read_text(encoding="utf-8")
+    source = search_sqlite.get_mother_source_info()
+    operations = [
+        {"op": "replace_content", "path": "A", "content": "Replaced alpha."},
+        {"op": "append_content", "path": "A.1", "content": "Appended detail."},
+        {"op": "update_title", "path": "A.1", "title": "Renamed child"},
+        {
+            "op": "create_section",
+            "path": "A.3",
+            "parent_path": "A",
+            "after_path": "A.2",
+            "title": "Third child",
+            "content": "Third child content.",
+        },
+    ]
+
+    preview = search_sqlite.preview_mother_memory_update(
+        source["revision"],
+        operations,
+    )
+
+    assert preview["valid"] is True
+    assert preview["base_revision"] == source["revision"]
+    assert preview["result_revision"] != source["revision"]
+    assert preview["changed_paths"] == ["A", "A.1", "A.3"]
+    assert "Replaced alpha." in preview["diff"]
+    assert mother_path.read_text(encoding="utf-8") == before
+
+
+def test_apply_mother_update_writes_backup_audit_and_refreshes_cache(
+    tmp_path,
+    monkeypatch,
+):
+    db_path, mother_path = _setup_writable_mother(tmp_path, monkeypatch)
+    source = search_sqlite.get_mother_source_info()
+    operations = [
+        {"op": "append_content", "path": "A.1", "content": "Appended detail."},
+        {
+            "op": "create_section",
+            "path": "A.3",
+            "parent_path": "A",
+            "after_path": "A.2",
+            "title": "Third child",
+            "content": "Third child content.",
+        },
+    ]
+
+    applied = search_sqlite.apply_mother_memory_update(
+        source["revision"],
+        operations,
+        actor="test",
+    )
+
+    assert applied["applied"] is True
+    assert applied["before_revision"] == source["revision"]
+    assert applied["after_revision"] != source["revision"]
+    assert Path(applied["backup_file"]).exists()
+    assert search_sqlite.get_mother_section("A.1")["content"] == (
+        "First child content.\n\nAppended detail."
+    )
+    assert search_sqlite.get_mother_section("A.1.1")["content"] == "Grandchild content."
+    assert search_sqlite.get_mother_section("A.3")["content"] == "Third child content."
+    assert not list(mother_path.parent.glob(f".{mother_path.name}.*.tmp"))
+
+    conn = sqlite3.connect(db_path)
+    try:
+        audit = conn.execute(
+            """
+            SELECT before_revision, after_revision, actor
+            FROM memory_mother_write_log
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert audit == (source["revision"], applied["after_revision"], "test")
+
+
+def test_mother_update_rejects_stale_revision_and_invalid_create(tmp_path, monkeypatch):
+    _, mother_path = _setup_writable_mother(tmp_path, monkeypatch)
+    source = search_sqlite.get_mother_source_info()
+    mother_path.write_text(
+        mother_path.read_text(encoding="utf-8") + "\nExternal edit.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(search_sqlite.MotherMemoryRevisionConflictError):
+        search_sqlite.apply_mother_memory_update(
+            source["revision"],
+            [{"op": "append_content", "path": "A", "content": "Should fail."}],
+        )
+
+    current = search_sqlite.get_mother_source_info()
+    with pytest.raises(ValueError, match="not a direct child"):
+        search_sqlite.preview_mother_memory_update(
+            current["revision"],
+            [
+                {
+                    "op": "create_section",
+                    "path": "A.4.1",
+                    "parent_path": "A",
+                    "title": "Invalid child",
+                }
+            ],
+        )
+
+
+def test_mother_update_http_requires_write_token_and_returns_preview(
+    tmp_path,
+    monkeypatch,
+):
+    _, _ = _setup_writable_mother(tmp_path, monkeypatch)
+    monkeypatch.setattr(app_module, "APP_TOKEN", "")
+    monkeypatch.setattr(app_module, "MOTHER_WRITE_TOKEN", "write-secret")
+    client = TestClient(app_module.app)
+    source = client.get("/memory/source").json()
+    payload = {
+        "expected_revision": source["revision"],
+        "operations": [
+            {"op": "append_content", "path": "A", "content": "API detail."}
+        ],
+    }
+
+    unauthorized = client.post("/memory/updates/preview", json=payload)
+    preview = client.post(
+        "/memory/updates/preview",
+        json=payload,
+        headers={"X-API-Key": "write-secret"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert preview.status_code == 200
+    assert preview.json()["valid"] is True
+
+
+def test_mother_update_preserves_crlf_line_endings(tmp_path, monkeypatch):
+    _, mother_path = _setup_writable_mother(tmp_path, monkeypatch)
+    text = mother_path.read_text(encoding="utf-8")
+    mother_path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+    source = search_sqlite.get_mother_source_info()
+
+    search_sqlite.apply_mother_memory_update(
+        source["revision"],
+        [{"op": "append_content", "path": "B", "content": "More beta."}],
+        actor="test",
+    )
+
+    raw = mother_path.read_bytes()
+    assert b"\r\n" in raw
+    assert b"\n" not in raw.replace(b"\r\n", b"")

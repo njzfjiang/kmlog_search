@@ -9,6 +9,7 @@ chat_data/*.db-*
 chat_data/*.sql
 chat_data/*.json
 chat_data/*.jsonl
+mother/.backups/
 
 # Raw ChatGPT export; large and private.
 chatGPT-*/

@@ -1,7 +1,12 @@
+import difflib
+import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
+import threading
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = PROJECT_ROOT / "chat_data" / "chat_search.db"
 DEFAULT_MOTHER_MEMORY_PATH = PROJECT_ROOT / "mother" / "记忆库(Current).md"
 MOTHER_MEMORY_PARSER_VERSION = "2026-06-07.i-relative-headings"
+MOTHER_MEMORY_WRITE_LOCK = threading.Lock()
 MOTHER_SECTION_INDEX = {
     "health": ["C", "F.2"],
     "panic": ["C", "F.4", "G"],
@@ -126,6 +132,10 @@ class ReviewedMemoryConflictError(ValueError):
     pass
 
 
+class MotherMemoryRevisionConflictError(ValueError):
+    pass
+
+
 def get_connection():
     if not DB_PATH.exists():
         raise RuntimeError(f"SQLite DB not found: {DB_PATH}")
@@ -185,8 +195,20 @@ def ensure_mother_memory_tables(cursor):
           section_count INTEGER NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS memory_mother_write_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_file TEXT NOT NULL,
+          before_revision TEXT NOT NULL,
+          after_revision TEXT NOT NULL,
+          operations_json TEXT NOT NULL,
+          actor TEXT,
+          created_at TEXT NOT NULL
+        )
+    """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_sections_source ON memory_mother_sections(source_file)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_toc_parent ON memory_mother_toc(parent_path)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_mother_write_log_created_at ON memory_mother_write_log(created_at)")
 
 
 def _table_columns(cursor, table_name: str) -> set[str]:
@@ -1519,10 +1541,374 @@ def complete_wish(wish_id: int) -> dict | None:
     return update_wish_status(wish_id, "done")
 
 
-def ingest_mother_markdown(source_file: str | Path | None = None) -> dict:
+def _resolve_mother_memory_path(source_file: str | Path | None = None) -> Path:
     path = Path(source_file) if source_file else DEFAULT_MOTHER_MEMORY_PATH
     if not path.is_absolute():
         path = PROJECT_ROOT / path
+    return path
+
+
+def _mother_revision(text: str) -> str:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _read_mother_text(path: Path) -> str:
+    return path.read_bytes().decode("utf-8")
+
+
+def _scan_mother_markdown(text: str) -> dict:
+    explicit_heading_re = re.compile(
+        r"^(#{1,6})\s+([A-Z](?:[.-]\d+)*)(?:\.|\s)+(.+?)\s*$"
+    )
+    relative_heading_re = re.compile(
+        r"^(#{1,6})\s+(\d+(?:\.\d+)*)(?:\.|\s)+(.+?)\s*$"
+    )
+    headings: list[dict] = []
+    stack_by_level: dict[int, str] = {}
+    offset = 0
+    for index, raw_line in enumerate(text.splitlines(keepends=True)):
+        line = raw_line.rstrip("\r\n")
+        explicit_match = explicit_heading_re.match(line)
+        relative_match = relative_heading_re.match(line)
+        match = explicit_match or relative_match
+        if explicit_match:
+            level = len(explicit_match.group(1))
+            section_path = explicit_match.group(2)
+        elif relative_match:
+            level = len(relative_match.group(1))
+            parent_path = _nearest_heading_path(stack_by_level, level)
+            if not parent_path:
+                offset += len(raw_line)
+                continue
+            section_path = f"{parent_path}.{relative_match.group(2)}"
+        else:
+            offset += len(raw_line)
+            continue
+
+        raw_title = match.group(3).strip()
+        title = raw_title.lstrip(". ").rstrip(":：").strip() or section_path
+        headings.append(
+            {
+                "path": section_path,
+                "title": title,
+                "level": level,
+                "line_index": index,
+                "heading_start": offset,
+                "heading_end": offset + len(raw_line),
+                "title_start": offset + match.start(3),
+                "title_end": offset + match.end(3),
+            }
+        )
+        stack_by_level[level] = section_path
+        for stale_level in [item for item in stack_by_level if item > level]:
+            stack_by_level.pop(stale_level, None)
+        offset += len(raw_line)
+
+    for index, heading in enumerate(headings):
+        heading["content_start"] = heading["heading_end"]
+        heading["content_end"] = (
+            headings[index + 1]["heading_start"]
+            if index + 1 < len(headings)
+            else len(text)
+        )
+    return {
+        "headings": headings,
+        "by_path": {heading["path"]: heading for heading in headings},
+    }
+
+
+def _validate_mother_headings(scan: dict) -> None:
+    headings = scan["headings"]
+    paths = [heading["path"] for heading in headings]
+    duplicates = sorted({path for path in paths if paths.count(path) > 1})
+    if duplicates:
+        raise ValueError(f"Duplicate mother memory paths: {duplicates}")
+    path_set = set(paths)
+    for heading in headings:
+        parent_path = _mother_parent_path(heading["path"])
+        if parent_path and parent_path not in path_set:
+            raise ValueError(
+                f"Mother memory parent path not found: {parent_path}"
+            )
+
+
+def _mother_newline(text: str) -> str:
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _normalize_mother_fragment(value: str, newline: str) -> str:
+    normalized = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    return normalized.replace("\n", newline)
+
+
+def _replace_mother_content(text: str, heading: dict, content: str) -> str:
+    newline = _mother_newline(text)
+    replacement = _normalize_mother_fragment(content, newline)
+    if replacement:
+        replacement += newline
+    if heading["content_end"] < len(text):
+        replacement += newline
+    return text[: heading["content_start"]] + replacement + text[heading["content_end"] :]
+
+
+def _append_mother_content(text: str, heading: dict, content: str) -> str:
+    if content is None:
+        raise ValueError("append_content requires content")
+    addition = str(content).strip()
+    if not addition:
+        raise ValueError("append_content requires non-empty content")
+    existing = text[heading["content_start"] : heading["content_end"]].strip()
+    combined = f"{existing}\n\n{addition}" if existing else addition
+    return _replace_mother_content(text, heading, combined)
+
+
+def _mother_subtree_end(text: str, scan: dict, heading: dict) -> int:
+    found = False
+    for candidate in scan["headings"]:
+        if candidate is heading:
+            found = True
+            continue
+        if found and candidate["level"] <= heading["level"]:
+            return candidate["heading_start"]
+    return len(text)
+
+
+def _create_mother_section(text: str, scan: dict, operation: dict) -> str:
+    path = str(operation.get("path") or "").strip()
+    parent_path = str(operation.get("parent_path") or "").strip()
+    title = str(operation.get("title") or "").strip()
+    newline = _mother_newline(text)
+    content = _normalize_mother_fragment(operation.get("content") or "", newline)
+    after_path = str(operation.get("after_path") or "").strip() or None
+    if not path or not parent_path or not title:
+        raise ValueError("create_section requires path, parent_path, and title")
+    if not re.fullmatch(r"[A-Z](?:[.-]\d+)*", path):
+        raise ValueError(f"Invalid mother memory path: {path}")
+    if "\n" in title or "\r" in title:
+        raise ValueError("Mother memory titles must be single-line text")
+    if path in scan["by_path"]:
+        raise ValueError(f"Mother memory section already exists: {path}")
+    if _mother_parent_path(path) != parent_path:
+        raise ValueError(f"{path} is not a direct child of {parent_path}")
+    parent = scan["by_path"].get(parent_path)
+    if parent is None:
+        raise ValueError(f"Mother memory parent path not found: {parent_path}")
+    level = int(parent["level"]) + 1
+    if level > 6:
+        raise ValueError("Mother memory headings cannot be deeper than level 6")
+
+    if after_path:
+        after_heading = scan["by_path"].get(after_path)
+        if after_heading is None:
+            raise ValueError(f"after_path not found: {after_path}")
+        if _mother_parent_path(after_path) != parent_path:
+            raise ValueError("after_path must be a sibling of the new section")
+        insert_at = _mother_subtree_end(text, scan, after_heading)
+    else:
+        insert_at = _mother_subtree_end(text, scan, parent)
+
+    block = f'{"#" * level} {path}. {title}'
+    if content:
+        block += f"{newline}{content}"
+    before = text[:insert_at].rstrip("\r\n")
+    after = text[insert_at:].lstrip("\r\n")
+    result = f"{before}{newline}{newline}{block}"
+    if after:
+        result += f"{newline}{newline}{after}"
+    else:
+        result += newline
+    return result
+
+
+def _apply_mother_operations(text: str, operations: list[dict]) -> str:
+    if not operations:
+        raise ValueError("operations must not be empty")
+    if len(operations) > 100:
+        raise ValueError("operations must contain at most 100 items")
+    allowed_fields = {
+        "replace_content": {"op", "path", "content"},
+        "append_content": {"op", "path", "content"},
+        "update_title": {"op", "path", "title"},
+        "create_section": {
+            "op",
+            "path",
+            "parent_path",
+            "after_path",
+            "title",
+            "content",
+        },
+    }
+    result = text
+    for operation in operations:
+        op = str(operation.get("op") or "").strip()
+        path = str(operation.get("path") or "").strip()
+        if op not in allowed_fields:
+            raise ValueError(f"Unsupported mother memory operation: {op}")
+        unknown_fields = set(operation) - allowed_fields[op]
+        if unknown_fields:
+            raise ValueError(
+                f"Unsupported fields for {op}: {sorted(unknown_fields)}"
+            )
+        scan = _scan_mother_markdown(result)
+        _validate_mother_headings(scan)
+        heading = scan["by_path"].get(path)
+        if op == "create_section":
+            result = _create_mother_section(result, scan, operation)
+            continue
+        if heading is None:
+            raise ValueError(f"Mother memory section not found: {path}")
+        if op == "replace_content":
+            if "content" not in operation or operation["content"] is None:
+                raise ValueError("replace_content requires content")
+            result = _replace_mother_content(result, heading, operation["content"])
+        elif op == "append_content":
+            result = _append_mother_content(result, heading, operation.get("content"))
+        elif op == "update_title":
+            title = str(operation.get("title") or "").strip()
+            if not title:
+                raise ValueError("update_title requires non-empty title")
+            if "\n" in title or "\r" in title:
+                raise ValueError("Mother memory titles must be single-line text")
+            result = result[: heading["title_start"]] + title + result[heading["title_end"] :]
+
+    final_scan = _scan_mother_markdown(result)
+    _validate_mother_headings(final_scan)
+    return result
+
+
+def get_mother_source_info(source_file: str | Path | None = None) -> dict:
+    path = _resolve_mother_memory_path(source_file)
+    if not path.exists():
+        raise RuntimeError(f"Mother memory markdown not found: {path}")
+    text = _read_mother_text(path)
+    scan = _scan_mother_markdown(text)
+    _validate_mother_headings(scan)
+    return {
+        "source_file": str(path),
+        "revision": _mother_revision(text),
+        "updated_at": datetime.fromtimestamp(
+            path.stat().st_mtime,
+            tz=timezone.utc,
+        ).isoformat(),
+        "parser_version": MOTHER_MEMORY_PARSER_VERSION,
+        "section_count": len(scan["headings"]),
+    }
+
+
+def preview_mother_memory_update(
+    expected_revision: str,
+    operations: list[dict],
+    source_file: str | Path | None = None,
+) -> dict:
+    path = _resolve_mother_memory_path(source_file)
+    if not path.exists():
+        raise RuntimeError(f"Mother memory markdown not found: {path}")
+    text = _read_mother_text(path)
+    revision = _mother_revision(text)
+    if revision != expected_revision:
+        raise MotherMemoryRevisionConflictError(
+            f"Mother memory revision changed: expected {expected_revision}, current {revision}"
+        )
+    result = _apply_mother_operations(text, operations)
+    diff = "".join(
+        difflib.unified_diff(
+            text.splitlines(keepends=True),
+            result.splitlines(keepends=True),
+            fromfile=str(path),
+            tofile=str(path),
+        )
+    )
+    return {
+        "valid": True,
+        "source_file": str(path),
+        "base_revision": revision,
+        "result_revision": _mother_revision(result),
+        "changed_paths": list(dict.fromkeys(str(item.get("path") or "") for item in operations)),
+        "diff": diff,
+        "warnings": [],
+    }
+
+
+def apply_mother_memory_update(
+    expected_revision: str,
+    operations: list[dict],
+    actor: str | None = None,
+    source_file: str | Path | None = None,
+) -> dict:
+    path = _resolve_mother_memory_path(source_file)
+    with MOTHER_MEMORY_WRITE_LOCK:
+        preview = preview_mother_memory_update(
+            expected_revision=expected_revision,
+            operations=operations,
+            source_file=path,
+        )
+        original = _read_mother_text(path)
+        result = _apply_mother_operations(original, operations)
+        current_revision = _mother_revision(original)
+        if current_revision != expected_revision:
+            raise MotherMemoryRevisionConflictError(
+                f"Mother memory revision changed: expected {expected_revision}, current {current_revision}"
+            )
+
+        backup_dir = path.parent / ".backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        backup_path = backup_dir / f"{path.name}.{timestamp}.bak"
+        shutil.copy2(path, backup_path)
+
+        temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temp_path.open("wb") as temp_file:
+                temp_file.write(result.encode("utf-8"))
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+        ingest_result = ingest_mother_markdown(path)
+        after_revision = _mother_revision(result)
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            ensure_mother_memory_tables(cursor)
+            cursor.execute(
+                """
+                INSERT INTO memory_mother_write_log (
+                    source_file,
+                    before_revision,
+                    after_revision,
+                    operations_json,
+                    actor,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(path),
+                    current_revision,
+                    after_revision,
+                    json.dumps(operations, ensure_ascii=False),
+                    actor,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return {
+            **preview,
+            "applied": True,
+            "before_revision": current_revision,
+            "after_revision": after_revision,
+            "backup_file": str(backup_path),
+            "ingest": ingest_result,
+        }
+
+
+def ingest_mother_markdown(source_file: str | Path | None = None) -> dict:
+    path = _resolve_mother_memory_path(source_file)
     if not path.exists():
         raise RuntimeError(f"Mother memory markdown not found: {path}")
 
@@ -1603,9 +1989,7 @@ def ingest_mother_markdown(source_file: str | Path | None = None) -> dict:
 
 
 def ensure_mother_markdown_ingested(source_file: str | Path | None = None) -> dict:
-    path = Path(source_file) if source_file else DEFAULT_MOTHER_MEMORY_PATH
-    if not path.is_absolute():
-        path = PROJECT_ROOT / path
+    path = _resolve_mother_memory_path(source_file)
     if not path.exists():
         raise RuntimeError(f"Mother memory markdown not found: {path}")
     updated_at = datetime.fromtimestamp(
@@ -1905,46 +2289,14 @@ def _dedupe_routes(routes: list[dict]) -> list[dict]:
 
 
 def _parse_mother_markdown(path: Path, updated_at: str) -> tuple[list[dict], list[dict]]:
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    explicit_heading_re = re.compile(r"^(#{1,6})\s+([A-Z](?:[.-]\d+)*)(?:\.|\s)+(.+?)\s*$")
-    relative_heading_re = re.compile(r"^(#{1,6})\s+(\d+(?:\.\d+)*)(?:\.|\s)+(.+?)\s*$")
-    headings: list[dict] = []
-    stack_by_level: dict[int, str] = {}
-    for index, line in enumerate(lines):
-        explicit_match = explicit_heading_re.match(line)
-        relative_match = relative_heading_re.match(line)
-        if explicit_match:
-            level = len(explicit_match.group(1))
-            section_path = explicit_match.group(2)
-            raw_title = explicit_match.group(3).strip()
-        elif relative_match:
-            level = len(relative_match.group(1))
-            parent_path = _nearest_heading_path(stack_by_level, level)
-            if not parent_path:
-                continue
-            section_path = f"{parent_path}.{relative_match.group(2)}"
-            raw_title = relative_match.group(3).strip()
-        else:
-            continue
-        title = raw_title.lstrip(". ").rstrip(":：").strip() or section_path
-        headings.append(
-            {
-                "path": section_path,
-                "title": title,
-                "level": level,
-                "line_index": index,
-            }
-        )
-        stack_by_level[level] = section_path
-        for stale_level in [item for item in stack_by_level if item > level]:
-            stack_by_level.pop(stale_level, None)
-
+    text = _read_mother_text(path)
+    scan = _scan_mother_markdown(text)
+    _validate_mother_headings(scan)
+    headings = scan["headings"]
     sections = []
     toc = []
     for order_index, heading in enumerate(headings):
-        next_line = headings[order_index + 1]["line_index"] if order_index + 1 < len(headings) else len(lines)
-        content = "\n".join(lines[heading["line_index"] + 1:next_line]).strip()
+        content = text[heading["content_start"] : heading["content_end"]].strip()
         sections.append(
             {
                 "path": heading["path"],
