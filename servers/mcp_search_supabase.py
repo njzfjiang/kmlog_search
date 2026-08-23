@@ -5,7 +5,12 @@ import httpx
 
 # If you're already using FastMCP, this should match your health MCP style.
 # pip install fastmcp
-from fastmcp import FastMCP
+try:
+    from namespace_compat import NamespaceCompatibleFastMCP
+except ModuleNotFoundError as exc:
+    if exc.name != "namespace_compat":
+        raise
+    from servers.namespace_compat import NamespaceCompatibleFastMCP
 try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
@@ -31,7 +36,10 @@ API_TOKEN = (
 MOTHER_WRITE_API_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_TOKEN
 WORLDBOOK_WRITE_API_TOKEN = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_TOKEN
 
-mcp = FastMCP("kmlog_search")
+mcp = NamespaceCompatibleFastMCP(
+    "kmlog_search",
+    allowed_tool_prefixes={"kmlog_search", "kmlog-search"},
+)
 
 def _headers(api_token: Optional[str] = None) -> Dict[str, str]:
     h = {"Content-Type": "application/json"}

@@ -123,6 +123,10 @@ MCP wrappers expose:
 - `apply_worldbook_update`
 - `rebuild_worldbook`
 
+Both MCP entrypoints accept the registered bare tool names and the connector-
+namespaced form `kmlog_search.<tool>`. Namespaced dispatch is restricted to the
+`kmlog_search` / `kmlog-search` prefixes and already registered tool names.
+
 Example update:
 
 ```json

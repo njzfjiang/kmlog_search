@@ -3,8 +3,13 @@ import os
 import httpx
 import sys
 from pathlib import Path
-from fastmcp import FastMCP
 from typing import Optional, List
+try:
+    from namespace_compat import NamespaceCompatibleFastMCP
+except ModuleNotFoundError as exc:
+    if exc.name != "namespace_compat":
+        raise
+    from servers.namespace_compat import NamespaceCompatibleFastMCP
 try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
@@ -35,7 +40,10 @@ WORLDBOOK_WRITE_API_KEY = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_KE
 if not API_KEY:
     print("Warning: KMLOG_API_KEY/KMLOG_SEARCH_API_TOKEN/SEARCH_API_TOKEN not set", file=sys.stderr)
 
-mcp = FastMCP("KMLog Search")
+mcp = NamespaceCompatibleFastMCP(
+    "KMLog Search",
+    allowed_tool_prefixes={"kmlog_search", "kmlog-search"},
+)
 
 async def _call_api(
     endpoint: str,
