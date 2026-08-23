@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Collection
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.utilities.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def normalize_tool_name(
@@ -40,6 +40,7 @@ class NamespaceCompatibleFastMCP(FastMCP):
         arguments: dict[str, Any] | None = None,
         **kwargs: Any,
     ):
+        logger.info("MCP tool dispatch: %s", name)
         known_names = {tool.name for tool in await self.list_tools()}
         normalized = normalize_tool_name(
             name,
