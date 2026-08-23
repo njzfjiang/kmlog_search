@@ -40,7 +40,8 @@ class NamespaceCompatibleFastMCP(FastMCP):
         arguments: dict[str, Any] | None = None,
         **kwargs: Any,
     ):
-        logger.info("MCP tool dispatch: %s", name)
+        if kwargs.get("run_middleware", True):
+            logger.info("MCP tool dispatch: %s", name)
         known_names = {tool.name for tool in await self.list_tools()}
         normalized = normalize_tool_name(
             name,
