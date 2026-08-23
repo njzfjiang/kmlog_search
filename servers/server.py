@@ -95,11 +95,16 @@ async def _call_j_write_api(endpoint: str, payload: dict) -> dict:
     try:
         return await _call_api(endpoint, payload, api_key=J_WRITE_API_KEY)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 409:
+        if exc.response.status_code not in {400, 409}:
             raise
         body = exc.response.json()
         detail = body.get("detail") if isinstance(body, dict) else None
-        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+        expected_code = (
+            "REVISION_CONFLICT"
+            if exc.response.status_code == 409
+            else "VALIDATION_ERROR"
+        )
+        if not isinstance(detail, dict) or detail.get("code") != expected_code:
             raise
         return {"ok": False, **detail}
 

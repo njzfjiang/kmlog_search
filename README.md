@@ -212,13 +212,44 @@ status mutation are intentionally unavailable. Archive requires an explicit
 reason and date. Writes use `KMLOG_J_WRITE_TOKEN`, falling back to
 `SEARCH_API_TOKEN`.
 
+One request may contain at most 100 operations. Patch may change only `title`,
+`body`, `owner`, `area`, `expires_at`, and `review_on`. The `id`, `created_at`,
+`status`, `archived_at`, and `archive_reason` fields are immutable through patch.
+`owner`, `area`, and `archive_reason` are non-empty free-form strings; they do
+not currently use enums. Status is constrained to `active` or `archived`, and
+new items must be active.
+
 The workflow uses a SHA-256 revision lock, unified-diff preview, timestamped
 backup, atomic replacement, and parsed readback verification. Semantic no-op
 apply calls do not write, back up, or touch the source mtime. Expired and
 review-due active items are returned as `cleanup_candidates`; reads never archive
 or modify them automatically.
 
-Example patch:
+Complete create operation:
+
+```json
+{
+  "expected_revision": "sha256:...",
+  "operations": [
+    {
+      "op": "create",
+      "item": {
+        "id": "J-20260823-010",
+        "title": "Review local workstation notes",
+        "body": "- Consolidate budget and noise constraints.",
+        "owner": "Mei",
+        "area": "local_ai_infra",
+        "status": "active",
+        "created_at": "2026-08-23",
+        "review_on": "2026-09-23"
+      }
+    }
+  ],
+  "actor": "manual-review"
+}
+```
+
+Patch operation:
 
 ```json
 {
@@ -233,6 +264,26 @@ Example patch:
   "actor": "manual-review"
 }
 ```
+
+Archive operation:
+
+```json
+{
+  "expected_revision": "sha256:...",
+  "operations": [
+    {
+      "op": "archive",
+      "id": "J-20260823-010",
+      "reason": "completed",
+      "archived_at": "2026-09-02"
+    }
+  ],
+  "actor": "manual-review"
+}
+```
+
+Validation failures return HTTP 400 and MCP wrappers preserve the structured
+detail, including `operation_index`, `item_id`, `field`, and `message`.
 
 ## Import Mother Markdown Memory
 

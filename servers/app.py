@@ -17,6 +17,7 @@ try:
     )
     from .recent_goals import (
         JRevisionConflictError,
+        JValidationError,
         apply_j_update,
         get_j_source_info,
         preview_j_update,
@@ -34,6 +35,7 @@ except ImportError:
     )
     from recent_goals import (
         JRevisionConflictError,
+        JValidationError,
         apply_j_update,
         get_j_source_info,
         preview_j_update,
@@ -226,6 +228,16 @@ def j_revision_conflict_detail(exc: JRevisionConflictError) -> dict[str, str]:
         "message": str(exc),
         "expected_revision": exc.expected_revision,
         "current_revision": exc.current_revision,
+    }
+
+
+def j_validation_error_detail(exc: JValidationError) -> dict[str, Any]:
+    return {
+        "code": exc.code,
+        "operation_index": exc.operation_index,
+        "item_id": exc.item_id,
+        "field": exc.field,
+        "message": str(exc),
     }
 
 
@@ -1011,6 +1023,11 @@ def api_preview_j_update(
             status_code=409,
             detail=j_revision_conflict_detail(exc),
         ) from exc
+    except JValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=j_validation_error_detail(exc),
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
@@ -1033,6 +1050,11 @@ def api_apply_j_update(
         raise HTTPException(
             status_code=409,
             detail=j_revision_conflict_detail(exc),
+        ) from exc
+    except JValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=j_validation_error_detail(exc),
         ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

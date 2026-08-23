@@ -68,11 +68,11 @@ def test_j_source_parses_structured_items_and_cleanup(tmp_path, monkeypatch):
 
 
 def test_j_requires_created_at_and_lifecycle_date():
-    with pytest.raises(ValueError, match="created_at"):
+    with pytest.raises(recent_goals.JValidationError, match="created_at"):
         recent_goals.serialize_j_document(
             {"preamble": "# J", "items": [_item(created_at=None)]}
         )
-    with pytest.raises(ValueError, match="expires_at or review_on"):
+    with pytest.raises(recent_goals.JValidationError, match="expires_at or review_on"):
         recent_goals.serialize_j_document(
             {"preamble": "# J", "items": [_item(review_on=None)]}
         )
@@ -147,12 +147,12 @@ def test_j_rejects_stale_revision_and_unsupported_mutations(tmp_path, monkeypatc
     assert conflict.value.current_revision != source["revision"]
 
     current = recent_goals.get_j_source_info()
-    with pytest.raises(ValueError, match="Unsupported J patch fields"):
+    with pytest.raises(recent_goals.JValidationError, match="status is immutable"):
         recent_goals.preview_j_update(
             current["revision"],
             [{"op": "patch", "id": "J-TEST-001", "changes": {"status": "archived"}}],
         )
-    with pytest.raises(ValueError, match="Unsupported J operation"):
+    with pytest.raises(recent_goals.JValidationError, match="unsupported operation"):
         recent_goals.preview_j_update(
             current["revision"],
             [{"op": "delete", "id": "J-TEST-001"}],
@@ -184,3 +184,74 @@ def test_j_http_write_auth_and_structured_conflict(tmp_path, monkeypatch):
     assert conflict.status_code == 409
     assert conflict.json()["detail"]["code"] == "REVISION_CONFLICT"
     assert conflict.json()["detail"]["current_revision"] != source["revision"]
+
+
+def test_j_http_returns_structured_validation_detail(tmp_path, monkeypatch):
+    _setup_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(app_module, "APP_TOKEN", "")
+    monkeypatch.setattr(app_module, "J_WRITE_TOKEN", "")
+    client = TestClient(app_module.app)
+    source = client.get("/j/source").json()
+
+    response = client.post(
+        "/j/updates/preview",
+        json={
+            "expected_revision": source["revision"],
+            "operations": [
+                {
+                    "op": "patch",
+                    "id": "J-TEST-001",
+                    "changes": {"created_at": "2026-08-24"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "code": "VALIDATION_ERROR",
+        "operation_index": 0,
+        "item_id": "J-TEST-001",
+        "field": "created_at",
+        "message": "created_at is immutable",
+    }
+
+
+@pytest.mark.parametrize(
+    ("operation", "field", "message"),
+    [
+        (
+            {
+                "op": "create",
+                "item": {
+                    "id": "J-TEST-002",
+                    "title": "Missing lifecycle",
+                    "body": "Body",
+                    "owner": "Shared",
+                    "area": "infra",
+                    "status": "active",
+                    "created_at": "2026-08-23",
+                },
+            },
+            "expires_at_or_review_on",
+            "expires_at or review_on is required",
+        ),
+        (
+            {"op": "archive", "id": "J-TEST-001", "reason": "completed"},
+            "archived_at",
+            "archive requires exactly op, id, reason, and archived_at",
+        ),
+    ],
+)
+def test_j_validation_detail_identifies_field(
+    tmp_path, monkeypatch, operation, field, message
+):
+    _setup_source(tmp_path, monkeypatch)
+    source = recent_goals.get_j_source_info()
+
+    with pytest.raises(recent_goals.JValidationError) as error:
+        recent_goals.preview_j_update(source["revision"], [operation])
+
+    assert error.value.operation_index == 0
+    assert error.value.field == field
+    assert str(error.value) == message

@@ -65,6 +65,33 @@ class JRevisionConflictError(ValueError):
         )
 
 
+class JValidationError(ValueError):
+    code = "VALIDATION_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        operation_index: int | None = None,
+        item_id: str | None = None,
+        field: str | None = None,
+    ) -> None:
+        self.operation_index = operation_index
+        self.item_id = item_id
+        self.field = field
+        super().__init__(message)
+
+    def with_operation(
+        self, operation_index: int, item_id: str | None
+    ) -> "JValidationError":
+        return JValidationError(
+            str(self),
+            operation_index=operation_index,
+            item_id=self.item_id or item_id,
+            field=self.field,
+        )
+
+
 def resolve_j_source_file(source_file: str | Path | None = None) -> Path:
     raw = source_file or os.getenv("KMLOG_J_SOURCE_FILE", "") or DEFAULT_J_SOURCE_FILE
     return Path(raw).expanduser().resolve()
@@ -73,60 +100,77 @@ def resolve_j_source_file(source_file: str | Path | None = None) -> Path:
 def _parse_date(field: str, value: Any, *, required: bool = False) -> str | None:
     if value is None or value == "":
         if required:
-            raise ValueError(f"J item requires {field}")
+            raise JValidationError(f"{field} is required", field=field)
         return None
     if not isinstance(value, str):
-        raise ValueError(f"J item {field} must be YYYY-MM-DD")
+        raise JValidationError(f"{field} must be YYYY-MM-DD", field=field)
     try:
         parsed = date.fromisoformat(value)
     except ValueError as exc:
-        raise ValueError(f"J item {field} must be YYYY-MM-DD: {value}") from exc
+        raise JValidationError(
+            f"{field} must be YYYY-MM-DD: {value}", field=field
+        ) from exc
     if parsed.isoformat() != value:
-        raise ValueError(f"J item {field} must be YYYY-MM-DD: {value}")
+        raise JValidationError(f"{field} must be YYYY-MM-DD: {value}", field=field)
     return value
 
 
 def _validate_item(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
-        raise ValueError("J items must be JSON objects")
+        raise JValidationError("item must be a JSON object", field="item")
     unknown = set(item) - (METADATA_FIELDS | {"title", "body"})
     if unknown:
-        raise ValueError(f"Unsupported J item fields: {sorted(unknown)}")
+        field = sorted(unknown)[0]
+        raise JValidationError(f"unsupported item field: {field}", field=field)
 
     result = deepcopy(item)
     item_id = result.get("id")
     if not isinstance(item_id, str) or not re.fullmatch(
         r"J-[A-Za-z0-9._-]+", item_id
     ):
-        raise ValueError("J item id must match J-[A-Za-z0-9._-]+")
+        raise JValidationError(
+            "id must match J-[A-Za-z0-9._-]+", field="id"
+        )
     for field in ("title", "body", "owner", "area"):
         if not isinstance(result.get(field), str) or not result[field].strip():
-            raise ValueError(f"J item requires non-empty {field}")
+            raise JValidationError(f"{field} must be non-empty", field=field)
         result[field] = result[field].strip()
 
     status = result.get("status")
     if status not in {"active", "archived"}:
-        raise ValueError("J item status must be active or archived")
+        raise JValidationError(
+            "status must be active or archived", field="status"
+        )
 
     created_at = _parse_date("created_at", result.get("created_at"), required=True)
     expires_at = _parse_date("expires_at", result.get("expires_at"))
     review_on = _parse_date("review_on", result.get("review_on"))
     archived_at = _parse_date("archived_at", result.get("archived_at"))
     if expires_at is None and review_on is None:
-        raise ValueError("J item requires expires_at or review_on")
+        raise JValidationError(
+            "expires_at or review_on is required",
+            field="expires_at_or_review_on",
+        )
     for field, value in (("expires_at", expires_at), ("review_on", review_on)):
         if value is not None and value < created_at:
-            raise ValueError(f"J item {field} must not be before created_at")
+            raise JValidationError(
+                f"{field} must not be before created_at", field=field
+            )
 
     if status == "active":
         if archived_at is not None or result.get("archive_reason") not in (None, ""):
-            raise ValueError("Active J items cannot contain archive metadata")
+            field = "archived_at" if archived_at is not None else "archive_reason"
+            raise JValidationError(
+                "active items cannot contain archive metadata", field=field
+            )
     else:
         if archived_at is None:
-            raise ValueError("Archived J items require archived_at")
+            raise JValidationError("archived_at is required", field="archived_at")
         reason = result.get("archive_reason")
         if not isinstance(reason, str) or not reason.strip():
-            raise ValueError("Archived J items require archive_reason")
+            raise JValidationError(
+                "archive_reason is required", field="archive_reason"
+            )
         result["archive_reason"] = reason.strip()
 
     for field, value in (
@@ -288,76 +332,123 @@ def get_j_source_info(source_file: str | Path | None = None) -> dict[str, Any]:
     return _source_result(path, document, text)
 
 
+def _apply_operation(
+    items: list[dict[str, Any]], operation: dict[str, Any]
+) -> None:
+    op = operation.get("op")
+    index_by_id = {item["id"]: index for index, item in enumerate(items)}
+
+    if op == "create":
+        if set(operation) != {"op", "item"}:
+            raise JValidationError(
+                "create requires exactly op and item", field="operation"
+            )
+        item = _validate_item(operation.get("item"))
+        if item["status"] != "active":
+            raise JValidationError(
+                "create only accepts active items", field="status"
+            )
+        if item["id"] in index_by_id:
+            raise JValidationError(
+                f"item already exists: {item['id']}",
+                item_id=item["id"],
+                field="id",
+            )
+        archive_index = next(
+            (
+                index
+                for index, existing in enumerate(items)
+                if existing["status"] == "archived"
+            ),
+            len(items),
+        )
+        items.insert(archive_index, item)
+        return
+
+    item_id = operation.get("id")
+    if not isinstance(item_id, str) or item_id not in index_by_id:
+        raise JValidationError(
+            f"item not found: {item_id}", item_id=item_id, field="id"
+        )
+    item = items[index_by_id[item_id]]
+
+    if op == "patch":
+        if set(operation) != {"op", "id", "changes"}:
+            raise JValidationError(
+                "patch requires exactly op, id, and changes", field="operation"
+            )
+        if item["status"] != "active":
+            raise JValidationError(
+                "archived items cannot be patched", field="status"
+            )
+        changes = operation.get("changes")
+        if not isinstance(changes, dict) or not changes:
+            raise JValidationError(
+                "changes must be a non-empty object", field="changes"
+            )
+        unknown = set(changes) - PATCH_FIELDS
+        if unknown:
+            field = sorted(unknown)[0]
+            if field in METADATA_FIELDS | {"id", "status"}:
+                message = f"{field} is immutable"
+            else:
+                message = f"unsupported patch field: {field}"
+            raise JValidationError(message, field=field)
+        candidate = {**item, **changes}
+        items[index_by_id[item_id]] = _validate_item(candidate)
+    elif op == "archive":
+        required_fields = {"op", "id", "reason", "archived_at"}
+        if set(operation) != required_fields:
+            missing = required_fields - set(operation)
+            field = sorted(missing)[0] if missing else "operation"
+            raise JValidationError(
+                "archive requires exactly op, id, reason, and archived_at",
+                field=field,
+            )
+        if item["status"] != "active":
+            raise JValidationError("item is already archived", field="status")
+        candidate = {
+            **item,
+            "status": "archived",
+            "archive_reason": operation.get("reason"),
+            "archived_at": operation.get("archived_at"),
+        }
+        items.pop(index_by_id[item_id])
+        items.append(_validate_item(candidate))
+    else:
+        raise JValidationError(f"unsupported operation: {op}", field="op")
+
+
 def _apply_operations(
     document: dict[str, Any], operations: list[dict[str, Any]]
 ) -> dict[str, Any]:
     if not operations:
-        raise ValueError("operations must not be empty")
+        raise JValidationError("operations must not be empty", field="operations")
     if len(operations) > 100:
-        raise ValueError("operations must contain at most 100 items")
+        raise JValidationError(
+            "operations must contain at most 100 items", field="operations"
+        )
 
     result = deepcopy(document)
     items = result["items"]
-    for operation in operations:
+    for operation_index, operation in enumerate(operations):
         if not isinstance(operation, dict):
-            raise ValueError("J operations must be JSON objects")
-        op = operation.get("op")
-        index_by_id = {item["id"]: index for index, item in enumerate(items)}
-
-        if op == "create":
-            if set(operation) != {"op", "item"}:
-                raise ValueError("create requires exactly op and item")
-            item = _validate_item(operation.get("item"))
-            if item["status"] != "active":
-                raise ValueError("create only accepts active J items")
-            if item["id"] in index_by_id:
-                raise ValueError(f"J item already exists: {item['id']}")
-            archive_index = next(
-                (
-                    index
-                    for index, existing in enumerate(items)
-                    if existing["status"] == "archived"
-                ),
-                len(items),
+            raise JValidationError(
+                "operation must be a JSON object",
+                operation_index=operation_index,
+                field="operation",
             )
-            items.insert(archive_index, item)
-            continue
-
         item_id = operation.get("id")
-        if not isinstance(item_id, str) or item_id not in index_by_id:
-            raise ValueError(f"J item not found: {item_id}")
-        item = items[index_by_id[item_id]]
-
-        if op == "patch":
-            if set(operation) != {"op", "id", "changes"}:
-                raise ValueError("patch requires exactly op, id, and changes")
-            if item["status"] != "active":
-                raise ValueError("Archived J items cannot be patched")
-            changes = operation.get("changes")
-            if not isinstance(changes, dict) or not changes:
-                raise ValueError("patch changes must be a non-empty object")
-            unknown = set(changes) - PATCH_FIELDS
-            if unknown:
-                raise ValueError(f"Unsupported J patch fields: {sorted(unknown)}")
-            candidate = {**item, **changes}
-            items[index_by_id[item_id]] = _validate_item(candidate)
-        elif op == "archive":
-            if set(operation) != {"op", "id", "reason", "archived_at"}:
-                raise ValueError(
-                    "archive requires exactly op, id, reason, and archived_at"
-                )
-            if item["status"] != "active":
-                raise ValueError(f"J item is already archived: {item_id}")
-            candidate = {
-                **item,
-                "status": "archived",
-                "archive_reason": operation.get("reason"),
-                "archived_at": operation.get("archived_at"),
-            }
-            items.pop(index_by_id[item_id])
-            items.append(_validate_item(candidate))
-        else:
-            raise ValueError(f"Unsupported J operation: {op}")
+        if item_id is None and isinstance(operation.get("item"), dict):
+            item_id = operation["item"].get("id")
+        try:
+            _apply_operation(items, operation)
+        except JValidationError as exc:
+            raise exc.with_operation(operation_index, item_id) from exc
+        except ValueError as exc:
+            raise JValidationError(
+                str(exc), operation_index=operation_index, item_id=item_id
+            ) from exc
     return result
 
 

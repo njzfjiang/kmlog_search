@@ -108,11 +108,16 @@ async def _post_j_write(
     try:
         return await _post(path, payload, api_token=J_WRITE_API_TOKEN)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 409:
+        if exc.response.status_code not in {400, 409}:
             raise
         body = exc.response.json()
         detail = body.get("detail") if isinstance(body, dict) else None
-        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+        expected_code = (
+            "REVISION_CONFLICT"
+            if exc.response.status_code == 409
+            else "VALIDATION_ERROR"
+        )
+        if not isinstance(detail, dict) or detail.get("code") != expected_code:
             raise
         return {"ok": False, **detail}
 
