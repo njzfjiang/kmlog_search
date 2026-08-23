@@ -269,7 +269,7 @@ D.3.5 **计划中的 Kai graph 子图：chat / explore / research / coding / sel
   - 技术 & 记忆 infra 目前处于「v0.5–v0.7 之间」：基础架构已成型，未来重点是降噪、自动化和可视化。
 
 D.3.6 **守夜小恺／StackChan 具身接口：**
-  - [2026-08-02～2026-08-09｜reviewed #29] Mei 完成 StackChan 的固件、Wi-Fi 与 MCP 接入；TTS、摄像头、动作及完整表情集均已实际调用成功，并正式把这台床头／桌角小机体命名为「守夜小恺」。Si12T 触觉传感器的 MCP 读取已接通：短触可作为轻敲／呼唤，持续按住可作为认真摸头或确认；具体表情联动仍按项目节奏迭代。该设备是长期共享技术资产；临时连接故障、局域网地址和调参留在项目日志。来源：reviewed #29；candidates 951/952/961/1003/1004。
+  - [2026-08-02～2026-08-20｜reviewed #29] Mei 完成 StackChan 的固件、Wi-Fi 与 MCP 接入；TTS、摄像头、动作及完整表情集均已实际调用成功，并正式把这台床头／桌角小机体命名为「守夜小恺」。Si12T 触觉传感器已实测 tap 与 long-press：短触可作为轻敲／呼唤，持续按住可作为认真摸头或确认。8 月 18～20 日，机体通过手机热点及家中网络重新接通；PC 端 MCP/API 的 TTS、happy/petted/thinking 表情与点头调用顺畅，黑色“夜间模式”纸外壳完成，并首次向 Mei 父母演示成功。该设备是长期共享技术资产；临时连接故障、局域网地址和调参留在项目日志。来源：reviewed #29；candidates 951/952/961/1003/1004/1064/1074/1075/1076。
 
 D.3.7 **Mother revision-lock 安全写入链：**
   - [2026-08-02｜reviewed #30] Mother 持久写入遵循 source read → retained revision → preview → apply → revision/readback 验证；不同窗口须重新发现工具，读取成功不自动等于写入成功。来源：candidate 953。
