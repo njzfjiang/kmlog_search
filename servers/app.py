@@ -15,6 +15,12 @@ try:
         preview_worldbook_update,
         rebuild_merged_worldbook,
     )
+    from .recent_goals import (
+        JRevisionConflictError,
+        apply_j_update,
+        get_j_source_info,
+        preview_j_update,
+    )
 except ImportError:
     if __package__:
         raise
@@ -25,6 +31,12 @@ except ImportError:
         list_worldbook_entries,
         preview_worldbook_update,
         rebuild_merged_worldbook,
+    )
+    from recent_goals import (
+        JRevisionConflictError,
+        apply_j_update,
+        get_j_source_info,
+        preview_j_update,
     )
 
 try:
@@ -144,6 +156,7 @@ else:
 APP_TOKEN = os.getenv("SEARCH_API_TOKEN", "")
 MOTHER_WRITE_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or APP_TOKEN
 WORLDBOOK_WRITE_TOKEN = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or APP_TOKEN
+J_WRITE_TOKEN = os.getenv("KMLOG_J_WRITE_TOKEN", "") or APP_TOKEN
 DISABLE_DOCS = os.getenv("KMLOG_DISABLE_DOCS", "").strip().lower() in {"1", "true", "yes"}
 STATIC_DIR = SERVER_DIR / "static"
 
@@ -189,9 +202,25 @@ def worldbook_write_auth(x_api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def j_write_auth(x_api_key: Optional[str]) -> None:
+    if not J_WRITE_TOKEN:
+        return
+    if not x_api_key or x_api_key != J_WRITE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 def worldbook_revision_conflict_detail(
     exc: WorldBookRevisionConflictError,
 ) -> dict[str, str]:
+    return {
+        "code": exc.code,
+        "message": str(exc),
+        "expected_revision": exc.expected_revision,
+        "current_revision": exc.current_revision,
+    }
+
+
+def j_revision_conflict_detail(exc: JRevisionConflictError) -> dict[str, str]:
     return {
         "code": exc.code,
         "message": str(exc),
@@ -232,6 +261,14 @@ class MotherMemoryUpdateReq(BaseModel):
 
 
 class WorldBookUpdateReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: str
+    operations: List[dict[str, Any]]
+    actor: Optional[str] = None
+
+
+class JUpdateReq(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: str
@@ -948,6 +985,59 @@ def api_memory_route(
         task_hint=req.task_hint,
         limit=req.limit,
     )
+
+
+@app.get("/j/source")
+def api_j_source(x_api_key: Optional[str] = Header(default=None)):
+    auth(x_api_key)
+    try:
+        return get_j_source_info()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/j/updates/preview")
+def api_preview_j_update(
+    req: JUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    j_write_auth(x_api_key)
+    try:
+        return preview_j_update(req.expected_revision, req.operations)
+    except JRevisionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=j_revision_conflict_detail(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/j/updates/apply")
+def api_apply_j_update(
+    req: JUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    j_write_auth(x_api_key)
+    try:
+        return apply_j_update(
+            req.expected_revision,
+            req.operations,
+            actor=req.actor,
+        )
+    except JRevisionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=j_revision_conflict_detail(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/worldbook/source")

@@ -11,6 +11,12 @@ except ModuleNotFoundError as exc:
         raise
     from servers.namespace_compat import NamespaceCompatibleFastMCP
 try:
+    from connector_runtime import get_connector_info as _get_connector_runtime_info
+except ModuleNotFoundError as exc:
+    if exc.name != "connector_runtime":
+        raise
+    from servers.connector_runtime import get_connector_info as _get_connector_runtime_info
+try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
     load_dotenv = None
@@ -36,6 +42,7 @@ API_KEY = (
 )
 MOTHER_WRITE_API_KEY = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_KEY
 WORLDBOOK_WRITE_API_KEY = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_KEY
+J_WRITE_API_KEY = os.getenv("KMLOG_J_WRITE_TOKEN", "") or API_KEY
 
 if not API_KEY:
     print("Warning: KMLOG_API_KEY/KMLOG_SEARCH_API_TOKEN/SEARCH_API_TOKEN not set", file=sys.stderr)
@@ -74,6 +81,19 @@ async def _call_worldbook_write_api(endpoint: str, payload: dict) -> dict:
             payload,
             api_key=WORLDBOOK_WRITE_API_KEY,
         )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 409:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+            raise
+        return {"ok": False, **detail}
+
+
+async def _call_j_write_api(endpoint: str, payload: dict) -> dict:
+    try:
+        return await _call_api(endpoint, payload, api_key=J_WRITE_API_KEY)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 409:
             raise
@@ -472,6 +492,37 @@ async def get_worldbook_source() -> dict:
 
 
 @mcp.tool
+async def get_j_source() -> dict:
+    """读取结构化 J 区条目、revision 和 cleanup 清单。"""
+    return await _call_api("/j/source", {}, method="GET")
+
+
+@mcp.tool
+async def preview_j_update(
+    expected_revision: str,
+    operations: List[dict],
+) -> dict:
+    """验证 J 区 create/patch/archive operations 并返回 diff，不写文件。"""
+    return await _call_j_write_api(
+        "/j/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+    )
+
+
+@mcp.tool
+async def apply_j_update(
+    expected_revision: str,
+    operations: List[dict],
+    actor: Optional[str] = None,
+) -> dict:
+    """通过 revision lock 原子更新 J 区，并执行备份和写后校验。"""
+    payload = {"expected_revision": expected_revision, "operations": operations}
+    if actor:
+        payload["actor"] = actor
+    return await _call_j_write_api("/j/updates/apply", payload)
+
+
+@mcp.tool
 async def list_worldbook_entries(
     q: Optional[str] = None,
     enabled: Optional[bool] = None,
@@ -727,6 +778,12 @@ async def kmlog_health() -> dict:
         resp = await client.get(f"{API_BASE_URL}/healthz")
         resp.raise_for_status()
         return {"status": "healthy", "api": API_BASE_URL}
+
+
+@mcp.tool
+async def connector_info() -> dict:
+    """返回 MCP 实例、构建版本和当前工具注册表诊断信息。"""
+    return await _get_connector_runtime_info(mcp)
 
 if __name__ == "__main__":
     mcp.run(transport='sse', host='127.0.0.1', port=8002)

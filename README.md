@@ -149,6 +149,12 @@ Both MCP entrypoints accept the registered bare tool names and the connector-
 namespaced form `kmlog_search.<tool>`. Namespaced dispatch is restricted to the
 `kmlog_search` / `kmlog-search` prefixes and already registered tool names.
 
+The `connector_info` MCP tool returns `build_sha`, `started_at`, `instance_id`,
+and a SHA-256 `registry_version`, plus the registered bare names and accepted
+namespaced aliases. Set `KMLOG_BUILD_SHA` during deployment to a Git commit or
+release identifier. This identifies stale processes and registries; it cannot
+repair a client-side connector cache when a request never reaches the server.
+
 Example update:
 
 ```json
@@ -162,6 +168,66 @@ Example update:
         "content": "Updated content",
         "keywords": ["keyword"]
       }
+    }
+  ],
+  "actor": "manual-review"
+}
+```
+
+## Structured J Goals
+
+`recent/Recent Goals(Current).md` is the Markdown source of truth for short-lived
+goals. Each item has a stable heading ID and a JSON metadata comment:
+
+```markdown
+### [J-20260823-001] Example goal
+<!-- j-item
+{
+  "id": "J-20260823-001",
+  "owner": "Shared",
+  "area": "infra",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-09-15"
+}
+-->
+- Human-readable goal content.
+```
+
+`created_at` is required and immutable. Every item also requires at least one of
+`expires_at` or `review_on`. Active items cannot carry archive metadata; archived
+items require `archived_at` and `archive_reason`.
+
+HTTP endpoints:
+
+```text
+GET  /j/source
+POST /j/updates/preview
+POST /j/updates/apply
+```
+
+MCP wrappers expose `get_j_source`, `preview_j_update`, and `apply_j_update`.
+Supported operations are `create`, `patch`, and `archive`; hard delete and direct
+status mutation are intentionally unavailable. Archive requires an explicit
+reason and date. Writes use `KMLOG_J_WRITE_TOKEN`, falling back to
+`SEARCH_API_TOKEN`.
+
+The workflow uses a SHA-256 revision lock, unified-diff preview, timestamped
+backup, atomic replacement, and parsed readback verification. Semantic no-op
+apply calls do not write, back up, or touch the source mtime. Expired and
+review-due active items are returned as `cleanup_candidates`; reads never archive
+or modify them automatically.
+
+Example patch:
+
+```json
+{
+  "expected_revision": "sha256:...",
+  "operations": [
+    {
+      "op": "patch",
+      "id": "J-20260823-001",
+      "changes": {"review_on": "2026-10-01"}
     }
   ],
   "actor": "manual-review"
@@ -304,17 +370,22 @@ Useful environment variables:
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
 - `KMLOG_MOTHER_WRITE_TOKEN`: optional dedicated token for mother Markdown
   preview/apply calls; falls back to `SEARCH_API_TOKEN`.
+- `KMLOG_J_SOURCE_FILE`: optional path to the structured J Markdown source.
+- `KMLOG_J_WRITE_TOKEN`: optional dedicated token for J preview/apply calls;
+  falls back to `SEARCH_API_TOKEN`.
 - `KMLOG_WORLDBOOK_DIR`: directory containing the three World Book JSON sources.
 - `KMLOG_WORLDBOOK_WRITE_TOKEN`: optional dedicated token for World Book writes;
   falls back to `SEARCH_API_TOKEN`.
 - `KMLOG_SEARCH_BACKEND`: `sqlite` by default. Set to `supabase` only for the legacy backend.
 - `KMLOG_SQLITE_DB`: optional custom path to the SQLite database.
 - `KMLOG_DISABLE_DOCS`: set to `1` on public deployments to disable `/docs`, `/redoc`, and `/openapi.json`.
+- `KMLOG_BUILD_SHA`: deployment identifier returned by `connector_info`.
 
 ## API
 
 ```text
 GET  /healthz
+GET  /j/source
 GET  /conversation_summary
 GET  /core_anchors
 GET  /daily_memory_candidates
@@ -339,6 +410,8 @@ POST /memory_candidates/promote
 PATCH /reviewed_memory_items/{id}
 POST /reviewed_memory_items/{id}/status
 POST /memory/route
+POST /j/updates/preview
+POST /j/updates/apply
 POST /memory/updates/preview
 POST /memory/updates/apply
 POST /search

@@ -54,3 +54,29 @@ def test_legacy_mcp_returns_structured_revision_conflict(monkeypatch):
     assert result["ok"] is False
     assert result["code"] == "REVISION_CONFLICT"
     assert result["current_revision"] == "sha256:new"
+
+
+def test_primary_mcp_j_returns_structured_revision_conflict(monkeypatch):
+    async def fake_call_api(*args, **kwargs):
+        raise _conflict_error()
+
+    monkeypatch.setattr(server, "_call_api", fake_call_api)
+
+    result = asyncio.run(server._call_j_write_api("/j/updates/preview", {}))
+
+    assert result["ok"] is False
+    assert result["code"] == "REVISION_CONFLICT"
+    assert result["current_revision"] == "sha256:new"
+
+
+def test_legacy_mcp_j_returns_structured_revision_conflict(monkeypatch):
+    async def fake_post(*args, **kwargs):
+        raise _conflict_error()
+
+    monkeypatch.setattr(mcp_search_supabase, "_post", fake_post)
+
+    result = asyncio.run(mcp_search_supabase._post_j_write("/j/updates/preview", {}))
+
+    assert result["ok"] is False
+    assert result["code"] == "REVISION_CONFLICT"
+    assert result["current_revision"] == "sha256:new"

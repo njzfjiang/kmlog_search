@@ -12,6 +12,12 @@ except ModuleNotFoundError as exc:
         raise
     from servers.namespace_compat import NamespaceCompatibleFastMCP
 try:
+    from connector_runtime import get_connector_info as _get_connector_runtime_info
+except ModuleNotFoundError as exc:
+    if exc.name != "connector_runtime":
+        raise
+    from servers.connector_runtime import get_connector_info as _get_connector_runtime_info
+try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
     load_dotenv = None
@@ -35,6 +41,7 @@ API_TOKEN = (
 )
 MOTHER_WRITE_API_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_TOKEN
 WORLDBOOK_WRITE_API_TOKEN = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_TOKEN
+J_WRITE_API_TOKEN = os.getenv("KMLOG_J_WRITE_TOKEN", "") or API_TOKEN
 
 mcp = NamespaceCompatibleFastMCP(
     "kmlog_search",
@@ -84,6 +91,22 @@ async def _post_worldbook_write(
             payload,
             api_token=WORLDBOOK_WRITE_API_TOKEN,
         )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 409:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+            raise
+        return {"ok": False, **detail}
+
+
+async def _post_j_write(
+    path: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    try:
+        return await _post(path, payload, api_token=J_WRITE_API_TOKEN)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 409:
             raise
@@ -384,6 +407,40 @@ async def get_worldbook_source() -> Dict[str, Any]:
 
 
 @mcp.tool()
+async def get_j_source() -> Dict[str, Any]:
+    """Read structured J items, source revision, and cleanup candidates."""
+    return await _get("/j/source")
+
+
+@mcp.tool()
+async def preview_j_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Validate J create/patch/archive operations without writing."""
+    return await _post_j_write(
+        "/j/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+    )
+
+
+@mcp.tool()
+async def apply_j_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Atomically apply revision-protected J operations with backup and readback."""
+    payload: Dict[str, Any] = {
+        "expected_revision": expected_revision,
+        "operations": operations,
+    }
+    if actor:
+        payload["actor"] = actor
+    return await _post_j_write("/j/updates/apply", payload)
+
+
+@mcp.tool()
 async def list_worldbook_entries(
     q: Optional[str] = None,
     enabled: Optional[bool] = None,
@@ -516,6 +573,12 @@ async def route_mother_memory(
     if task_hint:
         payload["task_hint"] = task_hint
     return await _post("/memory/route", payload)
+
+
+@mcp.tool()
+async def connector_info() -> Dict[str, Any]:
+    """Return MCP instance, build, namespace, and registry diagnostics."""
+    return await _get_connector_runtime_info(mcp)
 
 if __name__ == "__main__":
     # Run MCP server (stdio)
