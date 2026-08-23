@@ -77,6 +77,15 @@ def test_worldbook_merge_preserves_source_order(tmp_path, monkeypatch):
     )
     assert [entry["id"] for entry in merged["data"]["entries"]] == ["a", "b", "c"]
 
+    source = worldbook.get_worldbook_source_info()
+    assert [item["revision"][:7] for item in source["sources"]] == [
+        "sha256:",
+        "sha256:",
+        "sha256:",
+    ]
+    assert [item["writable"] for item in source["sources"]] == [False, False, True]
+    assert all(item["updated_at"] for item in source["sources"])
+
 
 def test_worldbook_preview_does_not_write_source(tmp_path, monkeypatch):
     recent_path = _setup_books(tmp_path, monkeypatch)
@@ -93,6 +102,34 @@ def test_worldbook_preview_does_not_write_source(tmp_path, monkeypatch):
     assert '-        "content": "gamma"' in preview["diff"]
     assert '+        "content": "updated"' in preview["diff"]
     assert recent_path.read_text(encoding="utf-8") == before
+
+
+def test_worldbook_noop_preview_and_apply_do_not_write_files(tmp_path, monkeypatch):
+    recent_path = _setup_books(tmp_path, monkeypatch)
+    worldbook.rebuild_merged_worldbook()
+    merged_path = tmp_path / "World_Book_Merged.json"
+    source_before = recent_path.read_bytes()
+    source_mtime = recent_path.stat().st_mtime_ns
+    merged_before = merged_path.read_bytes()
+    merged_mtime = merged_path.stat().st_mtime_ns
+    source = worldbook.get_worldbook_source_info()
+    operations = [{"op": "set_enabled", "id": "c", "enabled": True}]
+
+    preview = worldbook.preview_worldbook_update(source["revision"], operations)
+    applied = worldbook.apply_worldbook_update(source["revision"], operations)
+
+    assert preview["noop"] is True
+    assert preview["changed_entry_ids"] == []
+    assert preview["diff"] == ""
+    assert applied["noop"] is True
+    assert applied["applied"] is False
+    assert applied["backup_file"] is None
+    assert applied["merged"] is None
+    assert recent_path.read_bytes() == source_before
+    assert recent_path.stat().st_mtime_ns == source_mtime
+    assert merged_path.read_bytes() == merged_before
+    assert merged_path.stat().st_mtime_ns == merged_mtime
+    assert not (tmp_path / ".backups").exists()
 
 
 def test_worldbook_apply_backs_up_source_and_rebuilds_merge(tmp_path, monkeypatch):
@@ -128,11 +165,14 @@ def test_worldbook_rejects_stale_revision_and_cross_source_duplicates(
     recent["data"]["description"] = "external edit"
     _write_book(recent_path, recent)
 
-    with pytest.raises(worldbook.WorldBookRevisionConflictError):
+    with pytest.raises(worldbook.WorldBookRevisionConflictError) as conflict:
         worldbook.preview_worldbook_update(
             source["revision"],
             [{"op": "set_enabled", "id": "c", "enabled": False}],
         )
+    assert conflict.value.code == "REVISION_CONFLICT"
+    assert conflict.value.expected_revision == source["revision"]
+    assert conflict.value.current_revision != source["revision"]
 
     recent["data"]["entries"].append(_entry("a", "Duplicate A", "duplicate"))
     _write_book(recent_path, recent)
@@ -147,6 +187,14 @@ def test_worldbook_searches_name_keywords_and_content(tmp_path, monkeypatch):
 
     assert result["total_entries"] == 3
     assert [entry["id"] for entry in result["results"]] == ["b"]
+    assert result["results"][0]["source_file"] == "Expansion_Pack_v2.json"
+    assert result["results"][0]["source_lorebook_id"] == "expansion"
+    assert result["results"][0]["writable"] is False
+
+    writable = worldbook.list_worldbook_entries(q="gamma")["results"][0]
+    assert writable["source_file"] == "Recent_Updates.json"
+    assert writable["source_lorebook_id"] == "recent"
+    assert writable["writable"] is True
 
 
 def test_worldbook_http_preview_requires_write_token(tmp_path, monkeypatch):
@@ -197,3 +245,7 @@ def test_worldbook_http_returns_conflict_for_stale_revision(tmp_path, monkeypatc
     )
 
     assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["code"] == "REVISION_CONFLICT"
+    assert detail["expected_revision"] == source["revision"]
+    assert detail["current_revision"] != source["revision"]

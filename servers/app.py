@@ -189,6 +189,17 @@ def worldbook_write_auth(x_api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def worldbook_revision_conflict_detail(
+    exc: WorldBookRevisionConflictError,
+) -> dict[str, str]:
+    return {
+        "code": exc.code,
+        "message": str(exc),
+        "expected_revision": exc.expected_revision,
+        "current_revision": exc.current_revision,
+    }
+
+
 class SearchReq(BaseModel):
     query: str
     limit: int = 10
@@ -973,7 +984,10 @@ def api_preview_worldbook_update(
     try:
         return preview_worldbook_update(req.expected_revision, req.operations)
     except WorldBookRevisionConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail=worldbook_revision_conflict_detail(exc),
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
@@ -993,7 +1007,10 @@ def api_apply_worldbook_update(
             actor=req.actor,
         )
     except WorldBookRevisionConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail=worldbook_revision_conflict_detail(exc),
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

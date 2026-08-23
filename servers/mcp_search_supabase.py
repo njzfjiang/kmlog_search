@@ -73,6 +73,26 @@ async def _patch(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         r.raise_for_status()
         return r.json()
 
+
+async def _post_worldbook_write(
+    path: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    try:
+        return await _post(
+            path,
+            payload,
+            api_token=WORLDBOOK_WRITE_API_TOKEN,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 409:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+            raise
+        return {"ok": False, **detail}
+
 @mcp.tool()
 async def healthz() -> Dict[str, Any]:
     """Check if the KMLog Search API is alive."""
@@ -384,10 +404,9 @@ async def preview_worldbook_update(
     operations: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Validate Recent_Updates operations and return a diff without writing."""
-    return await _post(
+    return await _post_worldbook_write(
         "/worldbook/updates/preview",
         {"expected_revision": expected_revision, "operations": operations},
-        api_token=WORLDBOOK_WRITE_API_TOKEN,
     )
 
 
@@ -404,10 +423,9 @@ async def apply_worldbook_update(
     }
     if actor:
         payload["actor"] = actor
-    return await _post(
+    return await _post_worldbook_write(
         "/worldbook/updates/apply",
         payload,
-        api_token=WORLDBOOK_WRITE_API_TOKEN,
     )
 
 

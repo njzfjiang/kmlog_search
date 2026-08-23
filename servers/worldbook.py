@@ -63,7 +63,15 @@ WORLDBOOK_WRITE_LOCK = threading.Lock()
 
 
 class WorldBookRevisionConflictError(ValueError):
-    pass
+    code = "REVISION_CONFLICT"
+
+    def __init__(self, expected_revision: str, current_revision: str) -> None:
+        self.expected_revision = expected_revision
+        self.current_revision = current_revision
+        super().__init__(
+            "World Book revision changed: "
+            f"expected {expected_revision}, current {current_revision}"
+        )
 
 
 def _env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
@@ -157,25 +165,40 @@ def _serialize_lorebook(document: dict[str, Any]) -> str:
 def _merged_document(
     directory: Path,
     replacement: tuple[str, dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    dict[str, dict[str, Any]],
+]:
     entries: list[dict[str, Any]] = []
     manifest: list[dict[str, Any]] = []
+    provenance: dict[str, dict[str, Any]] = {}
     seen_ids: dict[str, str] = {}
     seen_names: dict[str, str] = {}
     source_ids: list[str] = []
     for filename in source_filenames():
+        path = _safe_child(directory, filename)
         if replacement and replacement[0] == filename:
             document = replacement[1]
+            text = _serialize_lorebook(document)
         else:
-            document, _ = load_lorebook(_safe_child(directory, filename))
+            document, text = load_lorebook(path)
         data = document["data"]
+        writable = filename == update_filename()
         source_ids.append(str(data.get("id") or filename))
         manifest.append(
             {
                 "file": filename,
+                "source_file": str(path),
                 "id": data.get("id"),
                 "name": data.get("name"),
                 "entry_count": len(data["entries"]),
+                "revision": text_revision(text),
+                "updated_at": datetime.fromtimestamp(
+                    path.stat().st_mtime,
+                    tz=timezone.utc,
+                ).isoformat(),
+                "writable": writable,
             }
         )
         for entry in data["entries"]:
@@ -192,6 +215,11 @@ def _merged_document(
             seen_ids[entry_id] = filename
             seen_names[name] = filename
             entries.append(deepcopy(entry))
+            provenance[entry_id] = {
+                "source_file": filename,
+                "source_lorebook_id": data.get("id"),
+                "writable": writable,
+            }
 
     merged_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(source_ids)))
     document = {
@@ -206,20 +234,28 @@ def _merged_document(
         },
     }
     validate_lorebook(document, "merged World Book")
-    return document, manifest
+    return document, manifest, provenance
 
 
 def get_worldbook_source_info(directory: str | Path | None = None) -> dict[str, Any]:
     base = resolve_worldbook_dir(directory)
-    path = _safe_child(base, update_filename())
-    document, text = load_lorebook(path)
+    _, manifest, _ = _merged_document(base)
+    writable_source = next(
+        (source for source in manifest if source["writable"]),
+        None,
+    )
+    if writable_source is None:
+        raise ValueError(
+            f"Writable World Book source is not configured: {update_filename()}"
+        )
     return {
-        "source_file": str(path),
-        "revision": text_revision(text),
-        "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
-        "entry_count": len(document["data"]["entries"]),
+        "source_file": writable_source["source_file"],
+        "revision": writable_source["revision"],
+        "updated_at": writable_source["updated_at"],
+        "entry_count": writable_source["entry_count"],
         "merged_file": str(_safe_child(base, merged_filename())),
         "source_files": list(source_filenames()),
+        "sources": manifest,
     }
 
 
@@ -232,7 +268,7 @@ def list_worldbook_entries(
     if limit < 1 or limit > 500:
         raise ValueError("limit must be between 1 and 500")
     base = resolve_worldbook_dir(directory)
-    document, manifest = _merged_document(base)
+    document, manifest, provenance = _merged_document(base)
     query = (q or "").strip().casefold()
     results = []
     for entry in document["data"]["entries"]:
@@ -243,7 +279,9 @@ def list_worldbook_entries(
         ).casefold()
         if query and query not in haystack:
             continue
-        results.append(entry)
+        result = deepcopy(entry)
+        result.update(provenance[entry["id"]])
+        results.append(result)
         if len(results) >= limit:
             break
     return {
@@ -313,6 +351,20 @@ def _apply_operations(document: dict[str, Any], operations: list[dict[str, Any]]
     return validate_lorebook(result, update_filename())
 
 
+def _changed_entry_ids(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> list[str]:
+    before_by_id = {
+        entry["id"]: entry for entry in before["data"]["entries"]
+    }
+    return [
+        entry["id"]
+        for entry in after["data"]["entries"]
+        if before_by_id.get(entry["id"]) != entry
+    ]
+
+
 def preview_worldbook_update(
     expected_revision: str,
     operations: list[dict[str, Any]],
@@ -324,31 +376,27 @@ def preview_worldbook_update(
     document, text = load_lorebook(path)
     revision = text_revision(text)
     if revision != expected_revision:
-        raise WorldBookRevisionConflictError(
-            f"World Book revision changed: expected {expected_revision}, current {revision}"
-        )
+        raise WorldBookRevisionConflictError(expected_revision, revision)
     result = _apply_operations(document, operations)
     _merged_document(base, replacement=(filename, result))
-    result_text = _serialize_lorebook(result)
+    changed_entry_ids = _changed_entry_ids(document, result)
+    noop = not changed_entry_ids
+    result_text = text if noop else _serialize_lorebook(result)
     return {
         "valid": True,
+        "noop": noop,
         "source_file": str(path),
         "base_revision": revision,
         "result_revision": text_revision(result_text),
-        "changed_entry_ids": list(
-            dict.fromkeys(
-                str(item.get("id") or item.get("entry", {}).get("id") or "")
-                for item in operations
-            )
-        ),
-        "diff": unified_text_diff(path, text, result_text),
+        "changed_entry_ids": changed_entry_ids,
+        "diff": "" if noop else unified_text_diff(path, text, result_text),
         "warnings": [],
     }
 
 
 def rebuild_merged_worldbook(directory: str | Path | None = None) -> dict[str, Any]:
     base = resolve_worldbook_dir(directory)
-    document, manifest = _merged_document(base)
+    document, manifest, _ = _merged_document(base)
     path = _safe_child(base, merged_filename())
     text = _serialize_lorebook(document)
     atomic_write_text(path, text)
@@ -371,11 +419,23 @@ def apply_worldbook_update(
     path = _safe_child(base, filename)
     with WORLDBOOK_WRITE_LOCK:
         preview = preview_worldbook_update(expected_revision, operations, base)
+        if preview["noop"]:
+            return {
+                **preview,
+                "applied": False,
+                "noop": True,
+                "actor": actor,
+                "before_revision": preview["base_revision"],
+                "after_revision": preview["result_revision"],
+                "backup_file": None,
+                "merged": None,
+            }
         document, text = load_lorebook(path)
         current_revision = text_revision(text)
         if current_revision != expected_revision:
             raise WorldBookRevisionConflictError(
-                f"World Book revision changed: expected {expected_revision}, current {current_revision}"
+                expected_revision,
+                current_revision,
             )
         result = _apply_operations(document, operations)
         backup_path = atomic_replace_with_backup(path, _serialize_lorebook(result))
@@ -383,6 +443,7 @@ def apply_worldbook_update(
         return {
             **preview,
             "applied": True,
+            "noop": False,
             "actor": actor,
             "before_revision": current_revision,
             "after_revision": preview["result_revision"],

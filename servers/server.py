@@ -66,6 +66,23 @@ async def _call_api(
         resp.raise_for_status()
         return resp.json()
 
+
+async def _call_worldbook_write_api(endpoint: str, payload: dict) -> dict:
+    try:
+        return await _call_api(
+            endpoint,
+            payload,
+            api_key=WORLDBOOK_WRITE_API_KEY,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 409:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or detail.get("code") != "REVISION_CONFLICT":
+            raise
+        return {"ok": False, **detail}
+
 @mcp.tool
 async def search_kmlog(
     query: str,
@@ -475,10 +492,9 @@ async def preview_worldbook_update(
     operations: List[dict],
 ) -> dict:
     """验证 Recent_Updates operations 并返回 diff，不写入文件。"""
-    return await _call_api(
+    return await _call_worldbook_write_api(
         "/worldbook/updates/preview",
         {"expected_revision": expected_revision, "operations": operations},
-        api_key=WORLDBOOK_WRITE_API_KEY,
     )
 
 
@@ -495,10 +511,9 @@ async def apply_worldbook_update(
     }
     if actor:
         payload["actor"] = actor
-    return await _call_api(
+    return await _call_worldbook_write_api(
         "/worldbook/updates/apply",
         payload,
-        api_key=WORLDBOOK_WRITE_API_KEY,
     )
 
 

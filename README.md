@@ -115,6 +115,28 @@ writing; apply backs up `Recent_Updates.json`, atomically replaces it, and rebui
 the merged file. Supported operations are `create_entry`, `replace_entry`,
 `patch_entry`, and `set_enabled`. Deletion is intentionally not exposed.
 
+Preview reports only entries whose stored JSON actually changes. Semantic no-op
+operations return `noop: true`, an empty `changed_entry_ids`, and an empty diff.
+Applying the same no-op returns `applied: false` and does not create a backup,
+touch the source mtime, or rebuild the merged file.
+
+A stale revision returns HTTP 409 with structured detail:
+
+```json
+{
+  "code": "REVISION_CONFLICT",
+  "expected_revision": "sha256:...",
+  "current_revision": "sha256:..."
+}
+```
+
+MCP write tools return the same fields with `ok: false`, instead of collapsing
+the conflict into a generic argument error. `GET /worldbook/source` includes a
+`sources` manifest with each lorebook's revision, mtime, entry count, and writable
+state. Entries returned by `GET /worldbook/entries` include `source_file`,
+`source_lorebook_id`, and `writable`; these provenance fields are API metadata and
+are not written into `World_Book_Merged.json`.
+
 MCP wrappers expose:
 
 - `get_worldbook_source`
