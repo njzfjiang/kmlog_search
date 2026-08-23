@@ -84,6 +84,64 @@ The MCP tool is:
 
 - `get_core_anchors`
 
+## Unified World Book
+
+The API can merge these lorebook sources in stable order:
+
+```text
+memory_system.json
+Expansion_Pack_v2.json
+Recent_Updates.json
+```
+
+Configure their directory with `KMLOG_WORLDBOOK_DIR`. During local development,
+the default also detects a sibling `chat-proxy/world_book` directory. The merged
+output defaults to `World_Book_Merged.json`; it is generated data and should not
+be edited directly. `Recent_Updates.json` is the only writable source.
+
+HTTP endpoints:
+
+```text
+GET  /worldbook/source
+GET  /worldbook/entries?q=keyword&enabled=true&limit=100
+POST /worldbook/updates/preview
+POST /worldbook/updates/apply
+POST /worldbook/rebuild
+```
+
+Writes use `KMLOG_WORLDBOOK_WRITE_TOKEN`, falling back to `SEARCH_API_TOKEN`.
+They require the current SHA-256 revision. Preview returns a unified diff without
+writing; apply backs up `Recent_Updates.json`, atomically replaces it, and rebuilds
+the merged file. Supported operations are `create_entry`, `replace_entry`,
+`patch_entry`, and `set_enabled`. Deletion is intentionally not exposed.
+
+MCP wrappers expose:
+
+- `get_worldbook_source`
+- `list_worldbook_entries`
+- `preview_worldbook_update`
+- `apply_worldbook_update`
+- `rebuild_worldbook`
+
+Example update:
+
+```json
+{
+  "expected_revision": "sha256:...",
+  "operations": [
+    {
+      "op": "patch_entry",
+      "id": "wb-entry-id",
+      "changes": {
+        "content": "Updated content",
+        "keywords": ["keyword"]
+      }
+    }
+  ],
+  "actor": "manual-review"
+}
+```
+
 ## Import Mother Markdown Memory
 
 The current mother memory file can be ingested into lightweight SQLite tables
@@ -220,6 +278,9 @@ Useful environment variables:
 - `SEARCH_API_TOKEN`: optional API token for HTTP requests.
 - `KMLOG_MOTHER_WRITE_TOKEN`: optional dedicated token for mother Markdown
   preview/apply calls; falls back to `SEARCH_API_TOKEN`.
+- `KMLOG_WORLDBOOK_DIR`: directory containing the three World Book JSON sources.
+- `KMLOG_WORLDBOOK_WRITE_TOKEN`: optional dedicated token for World Book writes;
+  falls back to `SEARCH_API_TOKEN`.
 - `KMLOG_SEARCH_BACKEND`: `sqlite` by default. Set to `supabase` only for the legacy backend.
 - `KMLOG_SQLITE_DB`: optional custom path to the SQLite database.
 - `KMLOG_DISABLE_DOCS`: set to `1` on public deployments to disable `/docs`, `/redoc`, and `/openapi.json`.
@@ -242,6 +303,8 @@ GET  /reviewed_memory
 GET  /reviewed_memory/by_message
 GET  /reviewed_memory_items
 GET  /weekly_memory_candidates
+GET  /worldbook/entries
+GET  /worldbook/source
 GET  /wish
 GET  /wishes
 POST /complete_wish/{id}
@@ -254,6 +317,9 @@ POST /memory/updates/preview
 POST /memory/updates/apply
 POST /search
 POST /search_by_date
+POST /worldbook/rebuild
+POST /worldbook/updates/apply
+POST /worldbook/updates/preview
 POST /wish
 POST /wish/{id}/status
 POST /ensure_indexes

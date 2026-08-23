@@ -30,6 +30,7 @@ API_KEY = (
     or ""
 )
 MOTHER_WRITE_API_KEY = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_KEY
+WORLDBOOK_WRITE_API_KEY = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_KEY
 
 if not API_KEY:
     print("Warning: KMLOG_API_KEY/KMLOG_SEARCH_API_TOKEN/SEARCH_API_TOKEN not set", file=sys.stderr)
@@ -437,6 +438,70 @@ async def get_core_anchors(
     if q:
         payload["q"] = q
     return await _call_api("/core_anchors", payload, method="GET")
+
+
+@mcp.tool
+async def get_worldbook_source() -> dict:
+    """读取 Recent_Updates World Book revision 和合并配置。"""
+    return await _call_api("/worldbook/source", {}, method="GET")
+
+
+@mcp.tool
+async def list_worldbook_entries(
+    q: Optional[str] = None,
+    enabled: Optional[bool] = None,
+    limit: int = 100,
+) -> dict:
+    """读取或搜索三本 World Book 的合并视图。"""
+    payload = {"limit": limit}
+    if q:
+        payload["q"] = q
+    if enabled is not None:
+        payload["enabled"] = enabled
+    return await _call_api("/worldbook/entries", payload, method="GET")
+
+
+@mcp.tool
+async def preview_worldbook_update(
+    expected_revision: str,
+    operations: List[dict],
+) -> dict:
+    """验证 Recent_Updates operations 并返回 diff，不写入文件。"""
+    return await _call_api(
+        "/worldbook/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+        api_key=WORLDBOOK_WRITE_API_KEY,
+    )
+
+
+@mcp.tool
+async def apply_worldbook_update(
+    expected_revision: str,
+    operations: List[dict],
+    actor: Optional[str] = None,
+) -> dict:
+    """更新 Recent_Updates，并原子重建统一 World Book。"""
+    payload = {
+        "expected_revision": expected_revision,
+        "operations": operations,
+    }
+    if actor:
+        payload["actor"] = actor
+    return await _call_api(
+        "/worldbook/updates/apply",
+        payload,
+        api_key=WORLDBOOK_WRITE_API_KEY,
+    )
+
+
+@mcp.tool
+async def rebuild_worldbook() -> dict:
+    """从三个配置源重新生成统一 World Book 文件。"""
+    return await _call_api(
+        "/worldbook/rebuild",
+        {},
+        api_key=WORLDBOOK_WRITE_API_KEY,
+    )
 
 @mcp.tool
 async def get_mother_toc() -> dict:

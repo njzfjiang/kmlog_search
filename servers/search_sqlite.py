@@ -1,15 +1,32 @@
-import difflib
-import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import threading
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from source_write import (
+        atomic_replace_with_backup,
+        detect_newline as _mother_newline,
+        normalize_fragment as _normalize_mother_fragment,
+        read_utf8_text as _read_mother_text,
+        text_revision as _mother_revision,
+        unified_text_diff,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "source_write":
+        raise
+    from servers.source_write import (
+        atomic_replace_with_backup,
+        detect_newline as _mother_newline,
+        normalize_fragment as _normalize_mother_fragment,
+        read_utf8_text as _read_mother_text,
+        text_revision as _mother_revision,
+        unified_text_diff,
+    )
 
 try:
     from dotenv import load_dotenv
@@ -1548,15 +1565,6 @@ def _resolve_mother_memory_path(source_file: str | Path | None = None) -> Path:
     return path
 
 
-def _mother_revision(text: str) -> str:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return f"sha256:{digest}"
-
-
-def _read_mother_text(path: Path) -> str:
-    return path.read_bytes().decode("utf-8")
-
-
 def _scan_mother_markdown(text: str) -> dict:
     explicit_heading_re = re.compile(
         r"^(#{1,6})\s+([A-Z](?:[.-]\d+)*)(?:\.|\s)+(.+?)\s*$"
@@ -1631,15 +1639,6 @@ def _validate_mother_headings(scan: dict) -> None:
             raise ValueError(
                 f"Mother memory parent path not found: {parent_path}"
             )
-
-
-def _mother_newline(text: str) -> str:
-    return "\r\n" if "\r\n" in text else "\n"
-
-
-def _normalize_mother_fragment(value: str, newline: str) -> str:
-    normalized = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
-    return normalized.replace("\n", newline)
 
 
 def _replace_mother_content(text: str, heading: dict, content: str) -> str:
@@ -1811,14 +1810,7 @@ def preview_mother_memory_update(
             f"Mother memory revision changed: expected {expected_revision}, current {revision}"
         )
     result = _apply_mother_operations(text, operations)
-    diff = "".join(
-        difflib.unified_diff(
-            text.splitlines(keepends=True),
-            result.splitlines(keepends=True),
-            fromfile=str(path),
-            tofile=str(path),
-        )
-    )
+    diff = unified_text_diff(path, text, result)
     return {
         "valid": True,
         "source_file": str(path),
@@ -1851,22 +1843,7 @@ def apply_mother_memory_update(
                 f"Mother memory revision changed: expected {expected_revision}, current {current_revision}"
             )
 
-        backup_dir = path.parent / ".backups"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-        backup_path = backup_dir / f"{path.name}.{timestamp}.bak"
-        shutil.copy2(path, backup_path)
-
-        temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            with temp_path.open("wb") as temp_file:
-                temp_file.write(result.encode("utf-8"))
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
-            os.replace(temp_path, path)
-        finally:
-            if temp_path.exists():
-                temp_path.unlink()
+        backup_path = atomic_replace_with_backup(path, result)
 
         ingest_result = ingest_mother_markdown(path)
         after_revision = _mother_revision(result)

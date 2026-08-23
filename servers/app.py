@@ -7,6 +7,27 @@ from pydantic import BaseModel, ConfigDict
 from typing import Any, Optional, List
 
 try:
+    from .worldbook import (
+        WorldBookRevisionConflictError,
+        apply_worldbook_update,
+        get_worldbook_source_info,
+        list_worldbook_entries,
+        preview_worldbook_update,
+        rebuild_merged_worldbook,
+    )
+except ImportError:
+    if __package__:
+        raise
+    from worldbook import (
+        WorldBookRevisionConflictError,
+        apply_worldbook_update,
+        get_worldbook_source_info,
+        list_worldbook_entries,
+        preview_worldbook_update,
+        rebuild_merged_worldbook,
+    )
+
+try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
     load_dotenv = None
@@ -122,6 +143,7 @@ else:
 
 APP_TOKEN = os.getenv("SEARCH_API_TOKEN", "")
 MOTHER_WRITE_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or APP_TOKEN
+WORLDBOOK_WRITE_TOKEN = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or APP_TOKEN
 DISABLE_DOCS = os.getenv("KMLOG_DISABLE_DOCS", "").strip().lower() in {"1", "true", "yes"}
 STATIC_DIR = SERVER_DIR / "static"
 
@@ -160,6 +182,13 @@ def mother_write_auth(x_api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def worldbook_write_auth(x_api_key: Optional[str]) -> None:
+    if not WORLDBOOK_WRITE_TOKEN:
+        return
+    if not x_api_key or x_api_key != WORLDBOOK_WRITE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 class SearchReq(BaseModel):
     query: str
     limit: int = 10
@@ -184,6 +213,14 @@ class MemoryRouteReq(BaseModel):
 
 
 class MotherMemoryUpdateReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: str
+    operations: List[dict[str, Any]]
+    actor: Optional[str] = None
+
+
+class WorldBookUpdateReq(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_revision: str
@@ -900,6 +937,78 @@ def api_memory_route(
         task_hint=req.task_hint,
         limit=req.limit,
     )
+
+
+@app.get("/worldbook/source")
+def api_worldbook_source(x_api_key: Optional[str] = Header(default=None)):
+    auth(x_api_key)
+    try:
+        return get_worldbook_source_info()
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/worldbook/entries")
+def api_worldbook_entries(
+    q: Optional[str] = None,
+    enabled: Optional[bool] = None,
+    limit: int = 100,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    try:
+        return list_worldbook_entries(q=q, enabled=enabled, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/worldbook/updates/preview")
+def api_preview_worldbook_update(
+    req: WorldBookUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    worldbook_write_auth(x_api_key)
+    try:
+        return preview_worldbook_update(req.expected_revision, req.operations)
+    except WorldBookRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/worldbook/updates/apply")
+def api_apply_worldbook_update(
+    req: WorldBookUpdateReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    worldbook_write_auth(x_api_key)
+    try:
+        return apply_worldbook_update(
+            req.expected_revision,
+            req.operations,
+            actor=req.actor,
+        )
+    except WorldBookRevisionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/worldbook/rebuild")
+def api_rebuild_worldbook(x_api_key: Optional[str] = Header(default=None)):
+    worldbook_write_auth(x_api_key)
+    try:
+        return rebuild_merged_worldbook()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/wish")

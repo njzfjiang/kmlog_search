@@ -29,6 +29,7 @@ API_TOKEN = (
     or ""
 )
 MOTHER_WRITE_API_TOKEN = os.getenv("KMLOG_MOTHER_WRITE_TOKEN", "") or API_TOKEN
+WORLDBOOK_WRITE_API_TOKEN = os.getenv("KMLOG_WORLDBOOK_WRITE_TOKEN", "") or API_TOKEN
 
 mcp = FastMCP("kmlog_search")
 
@@ -346,6 +347,70 @@ async def get_core_anchors(
     if q:
         params["q"] = q
     return await _get("/core_anchors", params)
+
+
+@mcp.tool()
+async def get_worldbook_source() -> Dict[str, Any]:
+    """Read the Recent_Updates World Book revision and merge configuration."""
+    return await _get("/worldbook/source")
+
+
+@mcp.tool()
+async def list_worldbook_entries(
+    q: Optional[str] = None,
+    enabled: Optional[bool] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Read or search the merged view of all configured World Book sources."""
+    params: Dict[str, Any] = {"limit": int(limit)}
+    if q:
+        params["q"] = q
+    if enabled is not None:
+        params["enabled"] = enabled
+    return await _get("/worldbook/entries", params)
+
+
+@mcp.tool()
+async def preview_worldbook_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Validate Recent_Updates operations and return a diff without writing."""
+    return await _post(
+        "/worldbook/updates/preview",
+        {"expected_revision": expected_revision, "operations": operations},
+        api_token=WORLDBOOK_WRITE_API_TOKEN,
+    )
+
+
+@mcp.tool()
+async def apply_worldbook_update(
+    expected_revision: str,
+    operations: List[Dict[str, Any]],
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Update Recent_Updates and atomically rebuild the unified World Book."""
+    payload: Dict[str, Any] = {
+        "expected_revision": expected_revision,
+        "operations": operations,
+    }
+    if actor:
+        payload["actor"] = actor
+    return await _post(
+        "/worldbook/updates/apply",
+        payload,
+        api_token=WORLDBOOK_WRITE_API_TOKEN,
+    )
+
+
+@mcp.tool()
+async def rebuild_worldbook() -> Dict[str, Any]:
+    """Rebuild the unified World Book from all configured sources."""
+    return await _post(
+        "/worldbook/rebuild",
+        {},
+        api_token=WORLDBOOK_WRITE_API_TOKEN,
+    )
 
 @mcp.tool()
 async def get_mother_toc() -> Dict[str, Any]:
