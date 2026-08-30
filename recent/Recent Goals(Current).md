@@ -71,6 +71,7 @@ sync_policy: manual
   - reviewed_memory_items 已接在 daily candidates 后面，作为「每周人工 review → promote → Mother/WB 手动精选」中间层；
   - /memory/section include_children=true 已测试可用，母本不同 section 可通过 MCP 直接阅读；
   - Mother revision-lock 写入链已跑通：source read → retained revision → preview → apply → revision/readback；不同窗口仍需重新确认工具可见性。
+  - 2026-08-30，World Book 与 Structured J 原位更新链在当前 Work 窗口完成实写验证：source read → retained revision → preview → apply → backup/readback；WB 写后自动重建 merged view。后续仍须逐窗重新发现工具，并只写各自 source of truth（`Recent_Updates.json` 与 `Recent Goals(Current).md`），不直接编辑派生缓存。
 - 近期目标（不必一次性完成）：
   - 让 health MCP + HP_max dashboard 稳定运行，作为日常“看一眼趋势”的工具；
   - 视情况给 decide_mode 的各 mode 补一点 note/建议（哪种心情适合用哪个 mode）；
