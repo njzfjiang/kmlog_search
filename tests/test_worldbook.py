@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,31 @@ def test_worldbook_preview_does_not_write_source(tmp_path, monkeypatch):
     assert '-        "content": "gamma"' in preview["diff"]
     assert '+        "content": "updated"' in preview["diff"]
     assert recent_path.read_text(encoding="utf-8") == before
+
+
+def test_worldbook_changed_preview_and_apply_refresh_display_dates(
+    tmp_path, monkeypatch
+):
+    recent_path = _setup_books(tmp_path, monkeypatch)
+    document = json.loads(recent_path.read_text(encoding="utf-8"))
+    document["data"]["name"] = "Recent_Updates（截至 2026-08-23）"
+    document["data"]["description"] = "累计增量（更新至 2026-08-23）"
+    _write_book(recent_path, document)
+    monkeypatch.setattr(worldbook, "current_utc_date", lambda: date(2026, 8, 30))
+    source = worldbook.get_worldbook_source_info()
+    operations = [
+        {"op": "patch_entry", "id": "c", "changes": {"content": "updated"}}
+    ]
+
+    preview = worldbook.preview_worldbook_update(source["revision"], operations)
+    applied = worldbook.apply_worldbook_update(source["revision"], operations)
+    readback = json.loads(recent_path.read_text(encoding="utf-8"))
+
+    assert "截至 2026-08-30" in preview["diff"]
+    assert "更新至 2026-08-30" in preview["diff"]
+    assert applied["applied"] is True
+    assert "截至 2026-08-30" in readback["data"]["name"]
+    assert "更新至 2026-08-30" in readback["data"]["description"]
 
 
 def test_worldbook_noop_preview_and_apply_do_not_write_files(tmp_path, monkeypatch):

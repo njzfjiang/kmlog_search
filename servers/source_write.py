@@ -3,9 +3,10 @@ from __future__ import annotations
 import difflib
 import hashlib
 import os
+import re
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 
@@ -25,6 +26,33 @@ def detect_newline(text: str) -> str:
 def normalize_fragment(value: str, newline: str) -> str:
     normalized = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
     return normalized.replace("\n", newline)
+
+
+def current_utc_date() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def update_frontmatter_last_updated(
+    text: str,
+    updated_on: date | None = None,
+) -> str:
+    newline = detect_newline(text)
+    frontmatter = re.match(
+        r"\A---\r?\n(?P<body>.*?)(?P<closing>^---[ \t]*(?:\r?\n|$))",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if frontmatter is None:
+        raise ValueError("Markdown source requires YAML frontmatter")
+
+    value = (updated_on or current_utc_date()).isoformat()
+    body = frontmatter.group("body")
+    pattern = re.compile(r"^last updated:[^\r\n]*", re.MULTILINE)
+    if pattern.search(body):
+        updated_body = pattern.sub(f"last updated: {value}", body, count=1)
+    else:
+        updated_body = f"last updated: {value}{newline}{body}"
+    return text[: frontmatter.start("body")] + updated_body + text[frontmatter.end("body") :]
 
 
 def unified_text_diff(path: Path, before: str, after: str) -> str:

@@ -14,6 +14,7 @@ try:
         normalize_fragment as _normalize_mother_fragment,
         read_utf8_text as _read_mother_text,
         text_revision as _mother_revision,
+        update_frontmatter_last_updated,
         unified_text_diff,
     )
 except ModuleNotFoundError as exc:
@@ -25,6 +26,7 @@ except ModuleNotFoundError as exc:
         normalize_fragment as _normalize_mother_fragment,
         read_utf8_text as _read_mother_text,
         text_revision as _mother_revision,
+        update_frontmatter_last_updated,
         unified_text_diff,
     )
 
@@ -1776,6 +1778,13 @@ def _apply_mother_operations(text: str, operations: list[dict]) -> str:
     return result
 
 
+def _prepare_mother_update(text: str, operations: list[dict]) -> str:
+    result = _apply_mother_operations(text, operations)
+    if result == text:
+        return text
+    return update_frontmatter_last_updated(result)
+
+
 def get_mother_source_info(source_file: str | Path | None = None) -> dict:
     path = _resolve_mother_memory_path(source_file)
     if not path.exists():
@@ -1809,15 +1818,23 @@ def preview_mother_memory_update(
         raise MotherMemoryRevisionConflictError(
             f"Mother memory revision changed: expected {expected_revision}, current {revision}"
         )
-    result = _apply_mother_operations(text, operations)
+    result = _prepare_mother_update(text, operations)
+    noop = result == text
     diff = unified_text_diff(path, text, result)
     return {
         "valid": True,
+        "noop": noop,
         "source_file": str(path),
         "base_revision": revision,
         "result_revision": _mother_revision(result),
-        "changed_paths": list(dict.fromkeys(str(item.get("path") or "") for item in operations)),
-        "diff": diff,
+        "changed_paths": (
+            []
+            if noop
+            else list(
+                dict.fromkeys(str(item.get("path") or "") for item in operations)
+            )
+        ),
+        "diff": "" if noop else diff,
         "warnings": [],
     }
 
@@ -1835,8 +1852,18 @@ def apply_mother_memory_update(
             operations=operations,
             source_file=path,
         )
+        if preview["noop"]:
+            return {
+                **preview,
+                "applied": False,
+                "noop": True,
+                "before_revision": preview["base_revision"],
+                "after_revision": preview["result_revision"],
+                "backup_file": None,
+                "ingest": None,
+            }
         original = _read_mother_text(path)
-        result = _apply_mother_operations(original, operations)
+        result = _prepare_mother_update(original, operations)
         current_revision = _mother_revision(original)
         if current_revision != expected_revision:
             raise MotherMemoryRevisionConflictError(

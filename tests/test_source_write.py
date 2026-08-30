@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 from servers.source_write import (
@@ -7,6 +8,7 @@ from servers.source_write import (
     normalize_fragment,
     read_utf8_text,
     text_revision,
+    update_frontmatter_last_updated,
     unified_text_diff,
 )
 
@@ -30,6 +32,21 @@ def test_unified_text_diff_names_source_file(tmp_path):
     assert f"+++ {source}" in diff
     assert "-before" in diff
     assert "+after" in diff
+
+
+def test_frontmatter_last_updated_preserves_newlines_and_inserts_missing_field():
+    updated = update_frontmatter_last_updated(
+        "---\r\nlast updated: 2026-08-23\r\nname: test\r\n---\r\nBody\r\n",
+        date(2026, 8, 30),
+    )
+    inserted = update_frontmatter_last_updated(
+        "---\nname: test\n---\nBody\n",
+        date(2026, 8, 30),
+    )
+
+    assert "last updated: 2026-08-30\r\n" in updated
+    assert "\n" not in updated.replace("\r\n", "")
+    assert inserted.startswith("---\nlast updated: 2026-08-30\nname: test")
 
 
 def test_atomic_replace_creates_backup_and_cleans_temp_file(tmp_path):

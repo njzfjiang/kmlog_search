@@ -14,6 +14,7 @@ try:
         atomic_replace_with_backup,
         read_utf8_text,
         text_revision,
+        update_frontmatter_last_updated,
         unified_text_diff,
     )
 except ModuleNotFoundError as exc:
@@ -23,6 +24,7 @@ except ModuleNotFoundError as exc:
         atomic_replace_with_backup,
         read_utf8_text,
         text_revision,
+        update_frontmatter_last_updated,
         unified_text_diff,
     )
 
@@ -465,6 +467,12 @@ def _changed_item_ids(
     ]
 
 
+def _update_j_last_updated(document: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(document)
+    result["preamble"] = update_frontmatter_last_updated(result["preamble"])
+    return result
+
+
 def preview_j_update(
     expected_revision: str,
     operations: list[dict[str, Any]],
@@ -481,6 +489,8 @@ def preview_j_update(
     result = _apply_operations(document, operations)
     changed_item_ids = _changed_item_ids(document, result)
     noop = not changed_item_ids
+    if not noop:
+        result = _update_j_last_updated(result)
     newline = "\r\n" if "\r\n" in text else "\n"
     result_text = text if noop else serialize_j_document(result, newline)
     return {
@@ -522,6 +532,8 @@ def apply_j_update(
                 "cleanup_candidates": _cleanup_candidates(document["items"]),
                 "backup_file": None,
             }
+
+        result = _update_j_last_updated(result)
 
         newline = "\r\n" if "\r\n" in text else "\n"
         result_text = serialize_j_document(result, newline)

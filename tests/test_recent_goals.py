@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -132,6 +133,27 @@ def test_j_apply_create_patch_archive_backs_up_and_reads_back(tmp_path, monkeypa
     assert readback["archived_items"][0]["archive_reason"] == "completed"
     assert "## Active" in path.read_text(encoding="utf-8")
     assert "## Archive" in path.read_text(encoding="utf-8")
+
+
+def test_j_changed_preview_and_apply_refresh_last_updated(tmp_path, monkeypatch):
+    path = _setup_source(tmp_path, monkeypatch)
+    update_date = recent_goals.update_frontmatter_last_updated
+    monkeypatch.setattr(
+        recent_goals,
+        "update_frontmatter_last_updated",
+        lambda text: update_date(text, date(2026, 8, 30)),
+    )
+    source = recent_goals.get_j_source_info()
+    operations = [
+        {"op": "patch", "id": "J-TEST-001", "changes": {"body": "Updated."}}
+    ]
+
+    preview = recent_goals.preview_j_update(source["revision"], operations)
+    applied = recent_goals.apply_j_update(source["revision"], operations)
+
+    assert "+last updated: 2026-08-30" in preview["diff"]
+    assert applied["applied"] is True
+    assert "last updated: 2026-08-30" in path.read_text(encoding="utf-8")
 
 
 def test_j_rejects_stale_revision_and_unsupported_mutations(tmp_path, monkeypatch):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import uuid
 from copy import deepcopy
@@ -13,6 +14,7 @@ try:
     from source_write import (
         atomic_replace_with_backup,
         atomic_write_text,
+        current_utc_date,
         read_utf8_text,
         text_revision,
         unified_text_diff,
@@ -23,6 +25,7 @@ except ModuleNotFoundError as exc:
     from servers.source_write import (
         atomic_replace_with_backup,
         atomic_write_text,
+        current_utc_date,
         read_utf8_text,
         text_revision,
         unified_text_diff,
@@ -365,6 +368,27 @@ def _changed_entry_ids(
     ]
 
 
+def _update_worldbook_last_updated(document: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(document)
+    value = current_utc_date().isoformat()
+    data = result["data"]
+    if isinstance(data.get("name"), str):
+        data["name"] = re.sub(
+            r"(?<=截至 )\d{4}-\d{2}-\d{2}",
+            value,
+            data["name"],
+            count=1,
+        )
+    if isinstance(data.get("description"), str):
+        data["description"] = re.sub(
+            r"(?<=更新至 )\d{4}-\d{2}-\d{2}",
+            value,
+            data["description"],
+            count=1,
+        )
+    return result
+
+
 def preview_worldbook_update(
     expected_revision: str,
     operations: list[dict[str, Any]],
@@ -377,10 +401,15 @@ def preview_worldbook_update(
     revision = text_revision(text)
     if revision != expected_revision:
         raise WorldBookRevisionConflictError(expected_revision, revision)
-    result = _apply_operations(document, operations)
-    _merged_document(base, replacement=(filename, result))
-    changed_entry_ids = _changed_entry_ids(document, result)
+    operation_result = _apply_operations(document, operations)
+    changed_entry_ids = _changed_entry_ids(document, operation_result)
     noop = not changed_entry_ids
+    result = (
+        operation_result
+        if noop
+        else _update_worldbook_last_updated(operation_result)
+    )
+    _merged_document(base, replacement=(filename, result))
     result_text = text if noop else _serialize_lorebook(result)
     return {
         "valid": True,
@@ -437,7 +466,9 @@ def apply_worldbook_update(
                 expected_revision,
                 current_revision,
             )
-        result = _apply_operations(document, operations)
+        result = _update_worldbook_last_updated(
+            _apply_operations(document, operations)
+        )
         backup_path = atomic_replace_with_backup(path, _serialize_lorebook(result))
         merged = rebuild_merged_worldbook(base)
         return {

@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -344,6 +345,46 @@ def test_apply_mother_update_writes_backup_audit_and_refreshes_cache(
     finally:
         conn.close()
     assert audit == (source["revision"], applied["after_revision"], "test")
+
+
+def test_mother_changed_update_refreshes_date_and_noop_does_not_write(
+    tmp_path, monkeypatch
+):
+    _, mother_path = _setup_writable_mother(tmp_path, monkeypatch)
+    update_date = search_sqlite.update_frontmatter_last_updated
+    monkeypatch.setattr(
+        search_sqlite,
+        "update_frontmatter_last_updated",
+        lambda text: update_date(text, date(2026, 8, 30)),
+    )
+    source = search_sqlite.get_mother_source_info()
+
+    preview = search_sqlite.preview_mother_memory_update(
+        source["revision"],
+        [{"op": "update_title", "path": "A", "title": "Updated alpha"}],
+    )
+    applied = search_sqlite.apply_mother_memory_update(
+        source["revision"],
+        [{"op": "update_title", "path": "A", "title": "Updated alpha"}],
+    )
+
+    assert "+last updated: 2026-08-30" in preview["diff"]
+    assert applied["applied"] is True
+    assert "last updated: 2026-08-30" in mother_path.read_text(encoding="utf-8")
+
+    current = search_sqlite.get_mother_source_info()
+    before = mother_path.read_bytes()
+    before_mtime = mother_path.stat().st_mtime_ns
+    noop = search_sqlite.apply_mother_memory_update(
+        current["revision"],
+        [{"op": "update_title", "path": "A", "title": "Updated alpha"}],
+    )
+
+    assert noop["noop"] is True
+    assert noop["applied"] is False
+    assert noop["backup_file"] is None
+    assert mother_path.read_bytes() == before
+    assert mother_path.stat().st_mtime_ns == before_mtime
 
 
 def test_mother_update_rejects_stale_revision_and_invalid_create(tmp_path, monkeypatch):

@@ -120,6 +120,9 @@ operations return `noop: true`, an empty `changed_entry_ids`, and an empty diff.
 Applying the same no-op returns `applied: false` and does not create a backup,
 touch the source mtime, or rebuild the merged file.
 
+A changed apply refreshes the writable lorebook's display dates in both
+`data.name` (`截至 YYYY-MM-DD`) and `data.description` (`更新至 YYYY-MM-DD`).
+
 A stale revision returns HTTP 409 with structured detail:
 
 ```json
@@ -223,7 +226,8 @@ The workflow uses a SHA-256 revision lock, unified-diff preview, timestamped
 backup, atomic replacement, and parsed readback verification. Semantic no-op
 apply calls do not write, back up, or touch the source mtime. Expired and
 review-due active items are returned as `cleanup_candidates`; reads never archive
-or modify them automatically.
+or modify them automatically. A changed preview/apply also refreshes the
+frontmatter `last updated` date.
 
 Complete create operation:
 
@@ -339,6 +343,8 @@ the Markdown file, refresh SQLite, and append an audit row to
 `memory_mother_write_log`. Supported operations are `replace_content`,
 `append_content`, `update_title`, and `create_section`. See
 [`docs/mother_memory_write_workflow.md`](docs/mother_memory_write_workflow.md).
+Changed previews/applies refresh the frontmatter `last updated` date; semantic
+no-op applies leave the file, backup directory, mtime, cache, and audit log alone.
 
 `/memory/route` is a deterministic intent router, not RAG. It suggests section
 paths and returns matching section rows with `inject: false`:
