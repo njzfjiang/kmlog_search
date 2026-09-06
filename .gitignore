@@ -19,3 +19,4 @@ chatGPT-*/
 # Keep examples/docs.
 !.env.example
 .venv/
+**/.venv/
