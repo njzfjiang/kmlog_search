@@ -84,14 +84,18 @@ if SEARCH_BACKEND == "supabase":
     update_reviewed_memory_status = None
     search_mother_sections = None
     update_memory_candidate_status = None
+    preview_memory_candidate_review_batch = None
+    apply_memory_candidate_review_batch = None
     update_wish_status = None
 else:
     try:
         from search_sqlite import (
             MotherMemoryRevisionConflictError,
+            CandidateReviewBatchError,
             ReviewedMemoryConflictError,
             ReviewedMemoryNotFoundError,
             apply_mother_memory_update,
+            apply_memory_candidate_review_batch,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -110,6 +114,7 @@ else:
             list_wishes,
             promote_memory_candidate,
             preview_mother_memory_update,
+            preview_memory_candidate_review_batch,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
@@ -124,9 +129,11 @@ else:
             raise
         from servers.search_sqlite import (
             MotherMemoryRevisionConflictError,
+            CandidateReviewBatchError,
             ReviewedMemoryConflictError,
             ReviewedMemoryNotFoundError,
             apply_mother_memory_update,
+            apply_memory_candidate_review_batch,
             complete_wish,
             create_wish,
             ensure_search_indexes,
@@ -145,6 +152,7 @@ else:
             list_wishes,
             promote_memory_candidate,
             preview_mother_memory_update,
+            preview_memory_candidate_review_batch,
             route_mother_memory,
             search_by_date,
             search_mother_sections,
@@ -248,6 +256,8 @@ class SearchReq(BaseModel):
     kinds: Optional[List[str]] = None
     after: Optional[str] = None
     before: Optional[str] = None
+    include_evidence: bool = False
+    evidence_terms: Optional[List[str]] = None
 
 
 class SearchByDateReq(BaseModel):
@@ -290,6 +300,19 @@ class JUpdateReq(BaseModel):
 
 class MemoryCandidateStatusReq(BaseModel):
     status: str
+
+
+class MemoryCandidateReviewBatchReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: str
+    actor: str
+    scope: dict[str, Any]
+    operations: List[dict[str, Any]]
+
+
+class ApplyMemoryCandidateReviewBatchReq(MemoryCandidateReviewBatchReq):
+    preview_digest: str
 
 
 class PromoteMemoryCandidateReq(BaseModel):
@@ -400,6 +423,8 @@ def _ensure_reviewed_memory_supported() -> None:
         or list_reviewed_memory_items is None
         or promote_memory_candidate is None
         or update_memory_candidate_status is None
+        or preview_memory_candidate_review_batch is None
+        or apply_memory_candidate_review_batch is None
         or update_reviewed_memory_item is None
         or update_reviewed_memory_status is None
     ):
@@ -470,6 +495,18 @@ def api_ensure_indexes(x_api_key: Optional[str] = Header(default=None)):
 @app.post("/search")
 def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
     auth(x_api_key)
+    if req.include_evidence and SEARCH_BACKEND == "sqlite":
+        from importlib import import_module
+        backend = import_module(search_messages.__module__)
+        evidence = import_module(f"{__package__}.message_search" if __package__ else "message_search")
+        result = evidence.search_with_evidence(
+            req.query, legacy_search=search_messages,
+            connection_factory=backend.get_connection, limit=req.limit,
+            mode=req.mode, kinds=req.kinds, after=req.after, before=req.before,
+            evidence_terms=req.evidence_terms,
+        )
+        return {"query": req.query, "mode": req.mode, "kinds": req.kinds,
+                "after": req.after, "before": req.before, **result}
     rows, hit_count = search_messages(
         req.query,
         limit=req.limit,
@@ -650,6 +687,51 @@ def api_update_memory_candidate_status(
     if candidate is None:
         raise HTTPException(status_code=404, detail="Memory candidate not found")
     return {"candidate": candidate}
+
+
+@app.post("/memory/candidates/review-batch/preview")
+def api_preview_memory_candidate_review_batch(
+    req: MemoryCandidateReviewBatchReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    try:
+        return preview_memory_candidate_review_batch(
+            batch_id=req.batch_id,
+            actor=req.actor,
+            scope=req.scope,
+            operations=req.operations,
+        )
+    except CandidateReviewBatchError as exc:
+        status_code = 409 if exc.code == "BATCH_ID_CONFLICT" else 400
+        raise HTTPException(status_code=status_code, detail=exc.as_detail()) from exc
+
+
+@app.post("/memory/candidates/review-batch/apply")
+def api_apply_memory_candidate_review_batch(
+    req: ApplyMemoryCandidateReviewBatchReq,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    _ensure_reviewed_memory_supported()
+    try:
+        return apply_memory_candidate_review_batch(
+            preview_digest=req.preview_digest,
+            batch_id=req.batch_id,
+            actor=req.actor,
+            scope=req.scope,
+            operations=req.operations,
+        )
+    except CandidateReviewBatchError as exc:
+        status_code = 409 if exc.code in {
+            "BATCH_ID_CONFLICT",
+            "BATCH_VALIDATION_FAILED",
+            "PREVIEW_DIGEST_MISMATCH",
+            "READBACK_FAILED",
+            "ROW_CONFLICT",
+        } else 400
+        raise HTTPException(status_code=status_code, detail=exc.as_detail()) from exc
 
 
 @app.post("/memory_candidates/promote")

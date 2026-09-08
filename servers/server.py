@@ -108,6 +108,19 @@ async def _call_j_write_api(endpoint: str, payload: dict) -> dict:
             raise
         return {"ok": False, **detail}
 
+
+async def _call_candidate_batch_api(endpoint: str, payload: dict) -> dict:
+    try:
+        return await _call_api(endpoint, payload)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code not in {400, 409}:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or not detail.get("code"):
+            raise
+        return {"ok": False, **detail}
+
 @mcp.tool
 async def search_kmlog(
     query: str,
@@ -292,6 +305,41 @@ async def update_memory_candidate_status(candidate_id: int, status: str) -> dict
     return await _call_api(
         f"/memory_candidates/{candidate_id}/status",
         {"status": status},
+    )
+
+
+@mcp.tool
+async def preview_memory_candidate_review_batch(
+    batch_id: str,
+    actor: str,
+    scope: dict,
+    operations: List[dict],
+) -> dict:
+    """Validate a complete candidate-review manifest without writing the database."""
+    return await _call_candidate_batch_api(
+        "/memory/candidates/review-batch/preview",
+        {"batch_id": batch_id, "actor": actor, "scope": scope, "operations": operations},
+    )
+
+
+@mcp.tool
+async def apply_memory_candidate_review_batch(
+    preview_digest: str,
+    batch_id: str,
+    actor: str,
+    scope: dict,
+    operations: List[dict],
+) -> dict:
+    """Atomically apply a previously previewed candidate-review manifest."""
+    return await _call_candidate_batch_api(
+        "/memory/candidates/review-batch/apply",
+        {
+            "preview_digest": preview_digest,
+            "batch_id": batch_id,
+            "actor": actor,
+            "scope": scope,
+            "operations": operations,
+        },
     )
 
 @mcp.tool

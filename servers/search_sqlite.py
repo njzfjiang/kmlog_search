@@ -8,6 +8,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
+    from candidate_review import (
+        CandidateReviewBatchError,
+        apply_memory_candidate_review_batch as _apply_candidate_review_batch,
+        ensure_candidate_review_schema,
+        preview_memory_candidate_review_batch as _preview_candidate_review_batch,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "candidate_review":
+        raise
+    from servers.candidate_review import (
+        CandidateReviewBatchError,
+        apply_memory_candidate_review_batch as _apply_candidate_review_batch,
+        ensure_candidate_review_schema,
+        preview_memory_candidate_review_batch as _preview_candidate_review_batch,
+    )
+
+try:
     from source_write import (
         atomic_replace_with_backup,
         detect_newline as _mother_newline,
@@ -283,6 +300,7 @@ def ensure_summary_tables(cursor):
     candidate_columns = _table_columns(cursor, "daily_memory_candidates")
     if "target_layer" not in candidate_columns:
         cursor.execute("ALTER TABLE daily_memory_candidates ADD COLUMN target_layer TEXT")
+    ensure_candidate_review_schema(cursor)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_summaries_updated_at ON daily_summaries(updated_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_memory_candidates_date_version ON daily_memory_candidates(date_key, summary_version)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_memory_candidates_status ON daily_memory_candidates(status)")
@@ -558,9 +576,10 @@ def update_memory_candidate_status(
     try:
         cursor = conn.cursor()
         ensure_summary_tables(cursor)
+        now = datetime.now(timezone.utc).isoformat()
         cursor.execute(
-            "UPDATE daily_memory_candidates SET status = ? WHERE id = ?",
-            (status, candidate_id),
+            "UPDATE daily_memory_candidates SET status = ?, updated_at = ? WHERE id = ?",
+            (status, now, candidate_id),
         )
         if cursor.rowcount == 0:
             conn.rollback()
@@ -584,7 +603,8 @@ def update_memory_candidate_status(
                 status,
                 metadata_json,
                 target_layer,
-                created_at
+                created_at,
+                updated_at
             FROM daily_memory_candidates
             WHERE id = ?
             """,
@@ -593,6 +613,40 @@ def update_memory_candidate_status(
         return _row_to_dict(row) if row else None
     finally:
         conn.close()
+
+
+def preview_memory_candidate_review_batch(
+    *,
+    batch_id: str,
+    actor: str,
+    scope: dict,
+    operations: list[dict],
+) -> dict:
+    return _preview_candidate_review_batch(
+        get_connection,
+        batch_id=batch_id,
+        actor=actor,
+        scope=scope,
+        operations=operations,
+    )
+
+
+def apply_memory_candidate_review_batch(
+    *,
+    preview_digest: str,
+    batch_id: str,
+    actor: str,
+    scope: dict,
+    operations: list[dict],
+) -> dict:
+    return _apply_candidate_review_batch(
+        get_connection,
+        preview_digest=preview_digest,
+        batch_id=batch_id,
+        actor=actor,
+        scope=scope,
+        operations=operations,
+    )
 
 
 def update_reviewed_memory_item(item_id: int, updates: dict) -> dict:
@@ -787,7 +841,8 @@ def promote_memory_candidate(
                 status,
                 metadata_json,
                 target_layer,
-                created_at
+                created_at,
+                updated_at
             FROM daily_memory_candidates
             WHERE id IN ({placeholders})
             ORDER BY id ASC
@@ -1296,7 +1351,8 @@ def list_daily_memory_candidates(
                 status,
                 metadata_json,
                 target_layer,
-                created_at
+                created_at,
+                updated_at
             FROM daily_memory_candidates
             {where_sql}
             ORDER BY date_key DESC, importance DESC, id ASC

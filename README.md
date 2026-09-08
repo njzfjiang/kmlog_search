@@ -610,6 +610,72 @@ Candidate review states are stored on `daily_memory_candidates.status`:
 - `superseded`: replaced by a later candidate/review decision.
 - `promoted`: materialized into `reviewed_memory_items`.
 
+### Candidate batch review
+
+Historical candidates can be reviewed through a revision-like preview/apply
+workflow:
+
+```text
+POST /memory/candidates/review-batch/preview
+POST /memory/candidates/review-batch/apply
+```
+
+The matching MCP tools are `preview_memory_candidate_review_batch` and
+`apply_memory_candidate_review_batch`. A batch may contain at most 500
+operations. Its scope must require the current status `candidate`, and the
+operation IDs must exactly cover every candidate matched by the date range.
+This prevents a manifest with the right count but missing IDs from applying.
+
+```json
+{
+  "batch_id": "backlog-2026-05-17-to-23-v1",
+  "actor": "manual-weekly-review",
+  "scope": {
+    "start_date": "2026-05-17",
+    "end_date": "2026-05-23",
+    "required_current_status": "candidate",
+    "expected_count": 2
+  },
+  "operations": [
+    {
+      "candidate_id": 53,
+      "status": "merged",
+      "reason_code": "covered_by_canonical_memory",
+      "merge_target": {"type": "mother_section", "ref": "F.1/F.4"}
+    },
+    {
+      "candidate_id": 156,
+      "status": "rejected",
+      "reason_code": "completed_one_off",
+      "manual_override": true,
+      "review_note": "Reviewed as a completed one-off event."
+    }
+  ]
+}
+```
+
+Apply sends the same object plus the exact `preview_digest` returned by
+preview. Operation ordering does not affect the digest. Apply revalidates the
+scope under `BEGIN IMMEDIATE`, updates only `status` and `updated_at`, writes
+`candidate_review_batches` and `candidate_review_events`, and verifies the
+rows before committing. A retry of the same successful batch is a no-op;
+reusing its ID for a different manifest returns `BATCH_ID_CONFLICT`.
+
+Allowed transitions are `candidate` to `accepted`, `deferred`, `merged`, or
+`rejected`. `merged` requires a reason and a target of type `reviewed_item`,
+`mother_section`, `worldbook_entry`, `j_item`, or `canonical_topic`.
+`rejected` requires one of the reason codes documented in
+[`docs/batch_updater_spec.md`](docs/batch_updater_spec.md). Sensitive
+rejections require both `manual_override: true` and a non-empty review note.
+Promotion remains exclusive to `promote_memory_candidate`.
+
+After deploying this schema change, run the existing authenticated migration
+endpoint once before the first preview:
+
+```bash
+curl -X POST "$KMLOG_API_URL/ensure_indexes" -H "X-API-Key: $KMLOG_API_KEY"
+```
+
 Reviewed memory items are the curated layer intended for later context
 retrieval. They are separate from raw candidates:
 
@@ -666,6 +732,8 @@ The MCP wrappers expose matching tools:
 - `get_daily_memory_candidates`
 - `get_weekly_memory_candidates`
 - `update_memory_candidate_status`
+- `preview_memory_candidate_review_batch`
+- `apply_memory_candidate_review_batch`
 - `promote_memory_candidate`
 - `get_reviewed_memory_items`
 - `update_reviewed_memory_item`

@@ -121,6 +121,19 @@ async def _post_j_write(
             raise
         return {"ok": False, **detail}
 
+
+async def _post_candidate_batch(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        return await _post(path, payload)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code not in {400, 409}:
+            raise
+        body = exc.response.json()
+        detail = body.get("detail") if isinstance(body, dict) else None
+        if not isinstance(detail, dict) or not detail.get("code"):
+            raise
+        return {"ok": False, **detail}
+
 @mcp.tool()
 async def healthz() -> Dict[str, Any]:
     """Check if the KMLog Search API is alive."""
@@ -240,6 +253,41 @@ async def update_memory_candidate_status(candidate_id: int, status: str) -> Dict
     return await _post(
         f"/memory_candidates/{candidate_id}/status",
         {"status": status},
+    )
+
+
+@mcp.tool()
+async def preview_memory_candidate_review_batch(
+    batch_id: str,
+    actor: str,
+    scope: Dict[str, Any],
+    operations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Validate a complete candidate-review manifest without writing the database."""
+    return await _post_candidate_batch(
+        "/memory/candidates/review-batch/preview",
+        {"batch_id": batch_id, "actor": actor, "scope": scope, "operations": operations},
+    )
+
+
+@mcp.tool()
+async def apply_memory_candidate_review_batch(
+    preview_digest: str,
+    batch_id: str,
+    actor: str,
+    scope: Dict[str, Any],
+    operations: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Atomically apply a previously previewed candidate-review manifest."""
+    return await _post_candidate_batch(
+        "/memory/candidates/review-batch/apply",
+        {
+            "preview_digest": preview_digest,
+            "batch_id": batch_id,
+            "actor": actor,
+            "scope": scope,
+            "operations": operations,
+        },
     )
 
 @mcp.tool()
