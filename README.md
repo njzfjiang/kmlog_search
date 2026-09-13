@@ -453,6 +453,7 @@ GET  /memory/section
 GET  /memory/source
 GET  /memory/toc
 GET  /memory_week
+GET  /messages/{id}
 GET  /reviewed_memory
 GET  /reviewed_memory/by_message
 GET  /reviewed_memory_items
@@ -490,9 +491,18 @@ POST /ensure_indexes
   "mode": "auto",
   "kinds": ["chat"],
   "after": "2026-01-01",
-  "before": "2026-05-01"
+  "before": "2026-05-01",
+  "include_evidence": true,
+  "evidence_terms": ["specific entity"]
 }
 ```
+
+With `include_evidence=true`, each result keeps the legacy 160-character
+`content_preview` and also returns full-body match metadata, including
+`matched_excerpt`, `body_matched_terms`, `title_matched_terms`, and
+`match_spans`. With the SQLite API backend, both MCP search wrappers request
+this mode by default. Use the numeric result `id` with `GET /messages/{id}` or the MCP tool
+`get_kmlog_message` when the complete, untruncated message is needed.
 
 `GET /wish` query parameters:
 
@@ -730,6 +740,7 @@ The MCP wrappers expose matching tools:
 - `get_daily_summary`
 - `list_daily_summaries`
 - `get_daily_memory_candidates`
+- `get_kmlog_message`
 - `get_weekly_memory_candidates`
 - `update_memory_candidate_status`
 - `preview_memory_candidate_review_batch`

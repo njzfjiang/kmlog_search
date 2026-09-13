@@ -2649,6 +2649,30 @@ def search_messages(
     )
 
 
+def get_message(message_pk: int) -> dict | None:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                id,
+                timestamp,
+                role,
+                content,
+                conversation_title,
+                conversation_id,
+                message_id,
+                kind
+            FROM messages
+            WHERE id = ?
+            """,
+            (message_pk,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def search_by_date(start_date, end_date, role=None, limit=20):
     conn = get_connection()
     try:

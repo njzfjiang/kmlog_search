@@ -140,14 +140,33 @@ async def healthz() -> Dict[str, Any]:
     return await _get("/healthz")
 
 @mcp.tool()
-async def search_logs(query: str, limit: int = 10) -> Dict[str, Any]:
+async def search_logs(
+    query: str,
+    limit: int = 10,
+    include_evidence: bool = True,
+    evidence_terms: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Keyword search over Supabase messages (hybrid FTS + trigram).
     Use when the user explicitly asks to "回看/翻记录/查原话".
     """
     if not query.strip():
         return {"query": query, "results": []}
-    return await _post("/search", {"query": query, "limit": int(limit)})
+    payload: Dict[str, Any] = {
+        "query": query,
+        "limit": int(limit),
+        "include_evidence": include_evidence,
+    }
+    if evidence_terms:
+        payload["evidence_terms"] = evidence_terms
+    return await _post("/search", payload)
+
+
+@mcp.tool()
+async def get_kmlog_message(message_pk: int) -> Dict[str, Any]:
+    """Read the complete, untruncated message body for a numeric search result ID."""
+    return await _get(f"/messages/{message_pk}")
+
 
 @mcp.tool()
 async def search_logs_by_date(

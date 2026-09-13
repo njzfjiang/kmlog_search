@@ -56,11 +56,21 @@ SEARCH_BACKEND = os.getenv("KMLOG_SEARCH_BACKEND", "sqlite").strip().lower()
 
 if SEARCH_BACKEND == "supabase":
     try:
-        from search_supabase import ensure_search_indexes, search_messages, search_by_date
+        from search_supabase import (
+            ensure_search_indexes,
+            get_message,
+            search_by_date,
+            search_messages,
+        )
     except ModuleNotFoundError as exc:
         if exc.name != "search_supabase":
             raise
-        from servers.search_supabase import ensure_search_indexes, search_messages, search_by_date
+        from servers.search_supabase import (
+            ensure_search_indexes,
+            get_message,
+            search_by_date,
+            search_messages,
+        )
     ensure_wish_indexes = None
     complete_wish = None
     create_wish = None
@@ -102,6 +112,7 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            get_message,
             get_mother_section,
             get_mother_source_info,
             get_reviewed_memory_by_message,
@@ -140,6 +151,7 @@ else:
             ensure_wish_indexes,
             get_conversation_summary,
             get_daily_summary,
+            get_message,
             get_mother_section,
             get_mother_source_info,
             get_reviewed_memory_by_message,
@@ -558,6 +570,23 @@ def api_search_by_date(req: SearchByDateReq, x_api_key: Optional[str] = Header(d
             for r in rows
         ],
     }
+
+
+@app.get("/messages/{message_pk}")
+def api_get_message(
+    message_pk: int,
+    x_api_key: Optional[str] = Header(default=None),
+):
+    auth(x_api_key)
+    if message_pk < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="message_pk must be a positive integer",
+        )
+    message = get_message(message_pk)
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"message": message}
 
 
 @app.get("/daily_summary")

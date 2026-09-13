@@ -241,6 +241,35 @@ def search_by_date(start_date, end_date, role=None, limit=20):
         print(f"❌ 搜索失败: {e}")
         return []
 
+
+def get_message(message_pk: int):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, timestamp, role, content, conversation_title
+            FROM messages
+            WHERE id = %s
+            """,
+            (message_pk,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "timestamp": str(row[1]),
+            "role": row[2],
+            "content": row[3],
+            "conversation_title": row[4],
+            "conversation_id": None,
+            "message_id": None,
+            "kind": None,
+        }
+    finally:
+        conn.close()
+
 if __name__ == "__main__":
     ensure_search_indexes()
 

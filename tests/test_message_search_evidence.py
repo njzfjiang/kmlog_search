@@ -1,6 +1,9 @@
 import sqlite3
 
+from fastapi.testclient import TestClient
+
 from servers.message_search import _excerpts, _terms, search_with_evidence
+from servers import app as app_module
 
 
 def test_single_cjk_query_is_preserved():
@@ -73,3 +76,38 @@ def test_entities_and_like_wildcards_are_literal(tmp_path):
     assert [r["id"] for r in medicine] == [5]
     assert medicine[0]["body_matched_terms"] == ["药"]
     assert "药" in medicine[0]["matched_excerpt"]
+
+
+def test_get_message_returns_complete_body_through_http(tmp_path, monkeypatch):
+    path = tmp_path / "messages.db"
+    content = "prefix " * 40 + "needle after the old preview boundary"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT,
+            role TEXT,
+            content TEXT,
+            conversation_title TEXT,
+            conversation_id TEXT,
+            message_id TEXT,
+            kind TEXT
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO messages VALUES (1, '2026-09-01', 'user', ?, 'Test', 'c1', 'm1', 'chat')",
+        (content,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setitem(app_module.get_message.__globals__, "DB_PATH", path)
+    monkeypatch.setattr(app_module, "APP_TOKEN", "")
+
+    response = TestClient(app_module.app).get("/messages/1")
+
+    assert response.status_code == 200
+    assert response.json()["message"]["content"] == content
+    assert len(response.json()["message"]["content"]) > 160
+    assert TestClient(app_module.app).get("/messages/999").status_code == 404
