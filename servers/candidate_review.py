@@ -6,7 +6,10 @@ from typing import Callable
 
 
 MAX_BATCH_OPERATIONS = 500
-ALLOWED_STATUSES = {"accepted", "deferred", "merged", "rejected"}
+ALLOWED_TRANSITIONS = {
+    "candidate": {"accepted", "deferred", "merged", "rejected"},
+    "deferred": {"accepted", "merged", "rejected"},
+}
 MERGE_TARGET_TYPES = {
     "reviewed_item",
     "mother_section",
@@ -155,10 +158,11 @@ def _normalize_manifest(batch_id, actor, scope, operations) -> dict:
         "scope.required_current_status",
         required=True,
     )
-    if required_status != "candidate":
+    if required_status not in ALLOWED_TRANSITIONS:
         raise CandidateReviewBatchError(
             "VALIDATION_ERROR",
-            "scope.required_current_status must be candidate",
+            "scope.required_current_status must be one of "
+            f"{sorted(ALLOWED_TRANSITIONS)}",
             field="scope.required_current_status",
         )
     expected_count = scope.get("expected_count")
@@ -392,14 +396,21 @@ def _evaluate(cursor, manifest: dict, digest: str) -> dict:
     invalid_operations = []
     candidate_ids = defaultdict(list)
     proposed_counts = Counter()
+    allowed_statuses = ALLOWED_TRANSITIONS[scope["required_current_status"]]
     for operation in manifest["operations"]:
         candidate_id = operation["candidate_id"]
         status = operation["status"]
         row = scoped_by_id.get(candidate_id)
         errors = []
-        if status not in ALLOWED_STATUSES:
+        if status not in allowed_statuses:
             errors.append(
-                {"field": "status", "message": f"status must be one of {sorted(ALLOWED_STATUSES)}"}
+                {
+                    "field": "status",
+                    "message": (
+                        f"status transition from {scope['required_current_status']} "
+                        f"must end in one of {sorted(allowed_statuses)}"
+                    ),
+                }
             )
         if status == "merged":
             target = operation["merge_target"]
@@ -450,7 +461,7 @@ def _evaluate(cursor, manifest: dict, digest: str) -> dict:
                     "errors": errors,
                 }
             )
-        if status in ALLOWED_STATUSES:
+        if status in allowed_statuses:
             candidate_ids[status].append(candidate_id)
             proposed_counts[status] += 1
 

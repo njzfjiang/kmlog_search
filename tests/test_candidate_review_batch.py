@@ -112,6 +112,35 @@ def _apply(manifest: dict, digest: str) -> dict:
     )
 
 
+def _deferred_manifest(batch_db: Path) -> dict:
+    conn = sqlite3.connect(batch_db)
+    conn.execute(
+        "UPDATE daily_memory_candidates SET status = 'deferred' WHERE id IN (1, 2, 3)"
+    )
+    conn.commit()
+    conn.close()
+    manifest = _manifest()
+    manifest["batch_id"] = "week-2026-05-17-deferred-v1"
+    manifest["scope"]["required_current_status"] = "deferred"
+    manifest["operations"] = [
+        {"candidate_id": 1, "status": "accepted"},
+        {
+            "candidate_id": 2,
+            "status": "rejected",
+            "reason_code": "transient_health_snapshot",
+            "manual_override": True,
+            "review_note": "Deferred health item reviewed manually.",
+        },
+        {
+            "candidate_id": 3,
+            "status": "merged",
+            "reason_code": "covered_by_canonical_memory",
+            "merge_target": {"type": "canonical_topic", "ref": "profile.recall"},
+        },
+    ]
+    return manifest
+
+
 def test_preview_is_read_only_deterministic_and_complete(batch_db):
     manifest = _manifest()
     before = batch_db.read_bytes()
@@ -127,6 +156,107 @@ def test_preview_is_read_only_deterministic_and_complete(batch_db):
     assert first["proposed_counts"] == {"merged": 1, "rejected": 1, "deferred": 1}
     assert first["preview_digest"] == second["preview_digest"]
     assert batch_db.read_bytes() == before
+
+
+def test_deferred_scope_previews_and_applies_allowed_transitions(batch_db):
+    manifest = _deferred_manifest(batch_db)
+    before_preview = batch_db.read_bytes()
+
+    preview = _preview(manifest)
+
+    assert preview["valid"] is True
+    assert preview["scope"] == {"matched_count": 3, "expected_count": 3}
+    assert preview["before_counts"] == {"deferred": 3}
+    assert preview["proposed_counts"] == {
+        "accepted": 1,
+        "rejected": 1,
+        "merged": 1,
+    }
+    assert preview["preview_digest"].startswith("sha256:")
+    assert batch_db.read_bytes() == before_preview
+
+    result = _apply(manifest, preview["preview_digest"])
+
+    assert result["applied"] is True
+    assert result["changed_count"] == 3
+    assert result["before_counts"] == {"deferred": 3}
+    assert result["after_counts"] == preview["proposed_counts"]
+    assert result["readback_verified"] is True
+    conn = sqlite3.connect(batch_db)
+    statuses = dict(
+        conn.execute(
+            "SELECT id, status FROM daily_memory_candidates WHERE id IN (1, 2, 3)"
+        ).fetchall()
+    )
+    events = conn.execute(
+        "SELECT old_status, new_status FROM candidate_review_events ORDER BY candidate_id"
+    ).fetchall()
+    conn.close()
+    assert statuses == {1: "accepted", 2: "rejected", 3: "merged"}
+    assert events == [
+        ("deferred", "accepted"),
+        ("deferred", "rejected"),
+        ("deferred", "merged"),
+    ]
+
+
+def test_deferred_scope_rejects_redefer_and_preserves_exact_id_lock(batch_db):
+    manifest = _deferred_manifest(batch_db)
+    manifest["operations"][0]["status"] = "deferred"
+    manifest["operations"][1]["candidate_id"] = 4
+
+    preview = _preview(manifest)
+
+    assert preview["valid"] is False
+    assert "SCOPE_CANDIDATES_MISSING_FROM_MANIFEST" in {
+        conflict["code"] for conflict in preview["conflicts"]
+    }
+    assert "CANDIDATE_OUT_OF_SCOPE" in {
+        conflict["code"] for conflict in preview["conflicts"]
+    }
+    assert preview["invalid_operations"] == [
+        {
+            "operation_index": 0,
+            "candidate_id": 1,
+            "errors": [
+                {
+                    "field": "status",
+                    "message": (
+                        "status transition from deferred must end in one of "
+                        "['accepted', 'merged', 'rejected']"
+                    ),
+                }
+            ],
+        }
+    ]
+
+
+def test_deferred_merge_still_requires_target_and_reason(batch_db):
+    manifest = _deferred_manifest(batch_db)
+    manifest["operations"][2].pop("merge_target")
+    manifest["operations"][2].pop("reason_code")
+
+    preview = _preview(manifest)
+
+    assert preview["valid"] is False
+    errors = {
+        error["field"]
+        for operation in preview["invalid_operations"]
+        if operation["candidate_id"] == 3
+        for error in operation["errors"]
+    }
+    assert errors == {"merge_target", "reason_code"}
+
+
+def test_batch_scope_rejects_unsupported_current_status(batch_db):
+    manifest = _manifest()
+    manifest["scope"]["required_current_status"] = "accepted"
+
+    with pytest.raises(search_sqlite.CandidateReviewBatchError) as error:
+        _preview(manifest)
+
+    assert error.value.code == "VALIDATION_ERROR"
+    assert error.value.details["field"] == "scope.required_current_status"
 
 
 @pytest.mark.parametrize(

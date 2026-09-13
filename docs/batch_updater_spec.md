@@ -176,6 +176,9 @@ candidate → accepted
 candidate → deferred
 candidate → merged
 candidate → rejected
+deferred → accepted
+deferred → merged
+deferred → rejected
 ```
 
 以下状态禁止由普通 batch updater 直接写：
@@ -183,6 +186,9 @@ candidate → rejected
 ```text
 candidate → promoted
 candidate → superseded
+deferred → deferred
+deferred → promoted
+deferred → superseded
 ```
 
 `promoted` 必须继续走现有 `promote_memory_candidate`，以创建 reviewed item 并保存 source provenance。

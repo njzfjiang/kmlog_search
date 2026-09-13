@@ -493,14 +493,20 @@ POST /ensure_indexes
   "after": "2026-01-01",
   "before": "2026-05-01",
   "include_evidence": true,
-  "evidence_terms": ["specific entity"]
+  "evidence_terms": ["specific entity"],
+  "candidate_limit": 80
 }
 ```
 
 With `include_evidence=true`, each result keeps the legacy 160-character
 `content_preview` and also returns full-body match metadata, including
 `matched_excerpt`, `body_matched_terms`, `title_matched_terms`, and
-`match_spans`. With the SQLite API backend, both MCP search wrappers request
+`match_spans`. `candidate_limit` optionally controls the pool considered before
+the final `limit` is applied (clamped to 1-200 and never below `limit`). Body
+matches rank ahead of title-only matches. Byte-identical message bodies are
+grouped, with `source_message_ids` and `duplicate_provenance` retaining every
+source occurrence. The response also includes `candidate_ids` and `selected_ids`
+for retrieval diagnostics. With the SQLite API backend, both MCP search wrappers request
 this mode by default. Use the numeric result `id` with `GET /messages/{id}` or the MCP tool
 `get_kmlog_message` when the complete, untruncated message is needed.
 
@@ -632,8 +638,9 @@ POST /memory/candidates/review-batch/apply
 
 The matching MCP tools are `preview_memory_candidate_review_batch` and
 `apply_memory_candidate_review_batch`. A batch may contain at most 500
-operations. Its scope must require the current status `candidate`, and the
-operation IDs must exactly cover every candidate matched by the date range.
+operations. Its scope may require current status `candidate` or `deferred`, and
+the operation IDs must exactly cover every candidate matched by the date range
+and required status.
 This prevents a manifest with the right count but missing IDs from applying.
 
 ```json
@@ -672,7 +679,8 @@ rows before committing. A retry of the same successful batch is a no-op;
 reusing its ID for a different manifest returns `BATCH_ID_CONFLICT`.
 
 Allowed transitions are `candidate` to `accepted`, `deferred`, `merged`, or
-`rejected`. `merged` requires a reason and a target of type `reviewed_item`,
+`rejected`, and `deferred` to `accepted`, `merged`, or `rejected`. A deferred
+candidate cannot be deferred again through this updater. `merged` requires a reason and a target of type `reviewed_item`,
 `mother_section`, `worldbook_entry`, `j_item`, or `canonical_topic`.
 `rejected` requires one of the reason codes documented in
 [`docs/batch_updater_spec.md`](docs/batch_updater_spec.md). Sensitive
