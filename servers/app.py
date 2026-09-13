@@ -270,6 +270,7 @@ class SearchReq(BaseModel):
     before: Optional[str] = None
     include_evidence: bool = False
     evidence_terms: Optional[List[str]] = None
+    candidate_limit: Optional[int] = None
 
 
 class SearchByDateReq(BaseModel):
@@ -516,6 +517,7 @@ def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
             connection_factory=backend.get_connection, limit=req.limit,
             mode=req.mode, kinds=req.kinds, after=req.after, before=req.before,
             evidence_terms=req.evidence_terms,
+            candidate_limit=req.candidate_limit,
         )
         return {"query": req.query, "mode": req.mode, "kinds": req.kinds,
                 "after": req.after, "before": req.before, **result}

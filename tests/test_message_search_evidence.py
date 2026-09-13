@@ -52,8 +52,89 @@ def test_body_pool_rescues_late_match_from_title_only_candidates(tmp_path):
     assert "FISTA" in first["matched_excerpt"]
     assert first["body_matched_terms"] == ["FISTA"]
     assert first["match_spans"][0]["start"] == 560
+    assert first["evidence_origin"] == "body"
+    assert first["title_only"] is False
     assert 100 not in result["candidate_ids"]
     assert 101 not in result["candidate_ids"]
+
+
+def test_candidate_limit_is_separate_from_final_limit(tmp_path):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE messages (id INTEGER, timestamp TEXT, role TEXT, content TEXT, conversation_title TEXT, kind TEXT)")
+    rows = [(i, f"2026-01-{i:02d}", "user", f"needle {i}", "", "chat") for i in range(1, 10)]
+    conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+    result = search_with_evidence(
+        "needle",
+        legacy_search=lambda *a, **k: ([], {}),
+        connection_factory=lambda: sqlite3.connect(path),
+        limit=2,
+        candidate_limit=5,
+    )
+
+    assert result["candidate_limit"] == 5
+    assert len(result["candidate_ids"]) == 5
+    assert len(result["selected_ids"]) == 2
+    assert result["selected_ids"] == [9, 8]
+
+
+def test_identical_bodies_are_grouped_with_provenance(tmp_path):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE messages (id INTEGER, timestamp TEXT, role TEXT, content TEXT, conversation_title TEXT, kind TEXT)")
+    rows = [
+        (1, "2026-01-01", "user", "same needle body", "First", "chat"),
+        (2, "2026-01-02", "assistant", "same needle body", "Second", "chat"),
+        (3, "2026-01-03", "user", "different needle body", "Third", "chat"),
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+    result = search_with_evidence(
+        "needle",
+        legacy_search=lambda *a, **k: ([], {}),
+        connection_factory=lambda: sqlite3.connect(path),
+        limit=3,
+    )
+
+    assert result["candidate_ids"] == [3, 2, 1]
+    assert result["selected_ids"] == [3, 2]
+    duplicate = result["results"][1]
+    assert duplicate["source_message_ids"] == [2, 1]
+    assert duplicate["duplicate_count"] == 2
+    assert [source["conversation_title"] for source in duplicate["duplicate_provenance"]] == ["Second", "First"]
+    assert result["candidate_count"] == 3
+    assert result["selected_count"] == 2
+    assert result["deduplicated_count"] == 1
+
+
+def test_empty_bodies_are_not_grouped(tmp_path):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE messages (id INTEGER, timestamp TEXT, role TEXT, content TEXT, conversation_title TEXT, kind TEXT)")
+    rows = [
+        (1, "2026-01-01", "user", "", "needle one", "chat"),
+        (2, "2026-01-02", "user", "", "needle two", "chat"),
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+    legacy_rows = [(row[0], row[1], row[2], "", row[4], 1.0, "title") for row in rows]
+    result = search_with_evidence(
+        "needle",
+        legacy_search=lambda *a, **k: (legacy_rows, {}),
+        connection_factory=lambda: sqlite3.connect(path),
+        limit=2,
+    )
+
+    assert result["selected_ids"] == [2, 1]
+    assert all(item["title_only"] for item in result["results"])
+    assert result["deduplicated_count"] == 0
 
 
 def test_entities_and_like_wildcards_are_literal(tmp_path):

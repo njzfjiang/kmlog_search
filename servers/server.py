@@ -131,6 +131,7 @@ async def search_kmlog(
     before: Optional[str] = None,
     include_evidence: bool = True,
     evidence_terms: Optional[List[str]] = None,
+    candidate_limit: Optional[int] = None,
 ) -> dict:
     """
     搜索 KMLog 消息内容（全文搜索）
@@ -144,6 +145,7 @@ async def search_kmlog(
         before: 可选，只搜索这个时间之前的消息，如 "2026-05-01"
         include_evidence: 是否返回完整正文上的命中证据窗口，默认开启
         evidence_terms: 可选，额外需要定位的正文关键词
+        candidate_limit: 可选，重排和去重前的候选池大小，范围 1-200
     """
     payload = {
         "query": query,
@@ -159,6 +161,8 @@ async def search_kmlog(
         payload["before"] = before
     if evidence_terms:
         payload["evidence_terms"] = evidence_terms
+    if candidate_limit is not None:
+        payload["candidate_limit"] = candidate_limit
     result = await _call_api("/search", payload)
     return result
 

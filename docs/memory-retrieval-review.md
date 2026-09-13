@@ -8,6 +8,24 @@
 
 建议顺序：**保存可追踪基线 → 抽出聊天检索模块 → 修复命中证据与候选选择 → 再做重排、分组去重和更好的 query planning**。使用现有 evidence contract，不另起一套候选结构。
 
+## 实施状态（2026-09-13）
+
+当前 kmlog-search 已完成以下兼容性改进；旧的 `include_evidence=false`
+响应保持不变：
+
+- opt-in evidence 检索已放入独立的 `servers/message_search.py`；
+- 基于完整正文返回命中词、offset 和命中窗口，160 字前缀只用于展示；
+- 正文候选独立召回，正文命中明确排在 title-only 命中之前；
+- 单字非 ASCII 检索词得到保留；
+- `candidate_limit` 与最终 `limit` 分离，并返回 candidate/selected ID 与数量；
+- byte-identical 非空正文会合并，结果保留所有 source message ID 和 provenance；
+- 可通过消息 numeric ID 读取完整正文。
+
+仍未完成的部分主要跨越 chat-proxy 和 benchmark：完整阶段 trace、固定数据库的
+行为锁版、利用有界 recent 消歧 planner query、工程讨论 kind 审计、事件级语义去重，
+以及带稳定目标 ID 的独立留出集评估。这些不应与本轮后端候选池改动混在同一次
+效果归因中。
+
 ## 审查版本与范围
 
 - [chat-proxy：d690761](https://github.com/njzfjiang/chat-proxy/tree/d690761afb61292e745debc818d4835b97176c8a)，提交时间 2026-09-07 03:29 UTC。
