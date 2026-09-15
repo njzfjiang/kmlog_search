@@ -73,12 +73,31 @@ def test_candidate_limit_is_separate_from_final_limit(tmp_path):
         connection_factory=lambda: sqlite3.connect(path),
         limit=2,
         candidate_limit=5,
+        include_candidate_results=True,
     )
 
     assert result["candidate_limit"] == 5
     assert len(result["candidate_ids"]) == 5
     assert len(result["selected_ids"]) == 2
     assert result["selected_ids"] == [9, 8]
+    assert [item["id"] for item in result["candidate_results"]] == [9, 8, 7, 6, 5]
+
+
+def test_candidate_results_are_opt_in(tmp_path):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE messages (id INTEGER, timestamp TEXT, role TEXT, content TEXT, conversation_title TEXT, kind TEXT)")
+    conn.execute("INSERT INTO messages VALUES (1, '2026-01-01', 'user', 'needle', '', 'chat')")
+    conn.commit()
+    conn.close()
+
+    result = search_with_evidence(
+        "needle",
+        legacy_search=lambda *a, **k: ([], {}),
+        connection_factory=lambda: sqlite3.connect(path),
+    )
+
+    assert "candidate_results" not in result
 
 
 def test_identical_bodies_are_grouped_with_provenance(tmp_path):

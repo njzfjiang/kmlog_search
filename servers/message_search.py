@@ -52,14 +52,15 @@ def _excerpts(content, spans):
 
 def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
                          mode="auto", kinds=None, after=None, before=None,
-                         evidence_terms=None, candidate_limit=None):
+                         evidence_terms=None, candidate_limit=None,
+                         include_candidate_results=False):
     limit = max(1, min(int(limit), 50))
     if candidate_limit is None:
         candidate_limit = max(40, limit * 4)
     candidate_limit = max(limit, min(int(candidate_limit), 200))
     terms = _terms(query, evidence_terms)
     if not query.strip():
-        return {
+        response = {
             "results": [],
             "evidence_version": 1,
             "candidate_limit": candidate_limit,
@@ -69,6 +70,9 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
             "selected_count": 0,
             "deduplicated_count": 0,
         }
+        if include_candidate_results:
+            response["candidate_results"] = []
+        return response
     legacy_rows, _ = legacy_search(query, limit=candidate_limit, mode=mode,
                                   kinds=kinds, after=after, before=before)
     legacy = {row[0]: row for row in legacy_rows}
@@ -164,7 +168,7 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
             group["duplicate_provenance"].append(provenance)
 
     selected = grouped[:limit]
-    return {
+    response = {
         "results": selected,
         "evidence_version": 1,
         "candidate_limit": candidate_limit,
@@ -174,3 +178,6 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
         "selected_count": len(selected),
         "deduplicated_count": len(candidates) - len(grouped),
     }
+    if include_candidate_results:
+        response["candidate_results"] = grouped
+    return response

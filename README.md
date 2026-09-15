@@ -494,7 +494,8 @@ POST /ensure_indexes
   "before": "2026-05-01",
   "include_evidence": true,
   "evidence_terms": ["specific entity"],
-  "candidate_limit": 80
+  "candidate_limit": 80,
+  "include_candidate_results": false
 }
 ```
 
@@ -509,6 +510,12 @@ source occurrence. The response also includes `candidate_ids` and `selected_ids`
 for retrieval diagnostics. With the SQLite API backend, both MCP search wrappers request
 this mode by default. Use the numeric result `id` with `GET /messages/{id}` or the MCP tool
 `get_kmlog_message` when the complete, untruncated message is needed.
+
+`include_candidate_results=true` is intended for bounded evaluation and
+reranking experiments. It adds the deduplicated candidate pool, including
+structured evidence excerpts and duplicate provenance, without changing the
+final `results`. Keep it disabled for ordinary searches to avoid unnecessarily
+large responses.
 
 `GET /wish` query parameters:
 
