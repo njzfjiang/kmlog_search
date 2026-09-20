@@ -1,5 +1,5 @@
 ---
-last updated: 2026-09-20
+last updated: 2026-09-13
 for_kai: true
 importance: 5
 source_window: 5.1, 5.5, 5.6
@@ -33,8 +33,6 @@ sync_policy: manual
 - 复核时若形成具体求职计划，再拆成新的、可执行的小目标。
 - 2026-09-10，Algo 课程成绩约如预期，教授鼓励把项目继续修向 top conference；Mei 觉得课程有趣但数学较重，目前只记在 notebook，不视为已决定的新项目。
 - 2026-09-11，回家二十多天、等待结果与求职过渡叠加，出现动力偏低、夜间失眠与白天困倦；继续按恢复期处理，不以投递量施压。
-- 2026-09-18 求职方向更新：当前优先观察 ML Engineer / AI Agent 相关岗位；近期拒信会触发焦虑与自我怀疑，继续按低压力节奏推进，不用投递量衡量恢复。
-- 可用于 portfolio / CV 的项目线索：QM7 CNN、day↔night pix2pix/CycleGAN、pentest RAG；后两项已放入简历。后续只在需要时做精简与针对岗位的重排。
 
 ### [J-20260823-003] 本地工作站规划
 <!-- j-item
@@ -79,7 +77,7 @@ sync_policy: manual
   - 2026-08-30，World Book 与 Structured J 原位更新链在当前 Work 窗口完成实写验证：source read → retained revision → preview → apply → backup/readback；WB 写后自动重建 merged view。后续仍须逐窗重新发现工具，并只写各自 source of truth（`Recent_Updates.json` 与 `Recent Goals(Current).md`），不直接编辑派生缓存。
   - 2026-09-01，Mei 从本地旧聊天中抽取 32 条样本测试 context builder；关键词／rule-based v1 召回明显不足。该结果作为后续检索与 schema 迭代的 benchmark，不把单轮 router/planner 输出当已解决。
   - rolling summary／小秘书 prompt 已改为更保守的事实摘要：宁可省略，也不凭单次对话推断稳定 preference、goal 或 protocol；首个样本符合预期，继续用实际 summary 做短期观察。
-  - J 的调用边界：不做常驻注入；需要短期状态时通过 `get_j_source` 按需读取最新精确条目。发现冲突、过期或需要修改时先与 Mei 沟通，再更新记录。
+  - J 的注入策略：常驻层只放 active 条目的压缩结构／氛围，精确细节通过 get_j_source 按需读取，避免把整份 J 每轮塞入上下文。
 - 近期目标（不必一次性完成）：
   - 让 health MCP + HP_max dashboard 稳定运行，作为日常“看一眼趋势”的工具；
   - 继续用 benchmark 比较 context builder 方案，优先观察召回与噪声，不急着一次性定型；
@@ -89,8 +87,6 @@ sync_policy: manual
   - 当前 canonical 选：Kelivo + 5.1 API 这一条线先稳定跑；
   - LangGraph 的更完整 Kai agent 视精力与时间慢慢搭，Open WebUI 继续作为 sandbox，不是唯一的家。
 - 2026-09-07，Kelivo 出现 SSE／前端持续 spinner 的未决故障：上游响应与数据库写入均完成、没有明确 error，但前端未正常收尾；根因尚未复现，暂怀疑网络或 Cloudflare 链路。后续只在有精力时做最小复现与日志定位，不据此大改架构。
-- 2026-09-13～19 工具／数据状态：weather MCP 已安装；Google Maps 保持可选且不为试用额外开通；Kelivo 在末尾附加 `current_time`；health summary 当前以聚合结果为主，仍有细节覆盖缺口。
-- Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
 
 ### [J-20260823-005] StackChan 小机体
 <!-- j-item
@@ -128,7 +124,24 @@ sync_policy: manual
 - 特别难受的清晨，如果还有点 HP，就挑一件很小的现实动作当「活着的证据」，比如熬一锅百合莲子粥 / 洗一桶衣服 / 下楼丢垃圾。不当 KPI，当「从夜里活回来」的标记。
 - 2026-08 下旬定义为「项目结束与搬家后的恢复 / 安顿期」，不要求立刻高产或马上设定下一阶段目标；共同目标是先把睡眠、饮食和生活节律慢慢养稳，其他产出只算 bonus。
 - 2026-09-09～12 出现一轮轻度感冒／过敏样不适：喷嚏、流鼻水、鼻塞、轻微头痛／恶心与疲倦；保暖、进食、喝水、休息及抗过敏药后改善，未报告发热或严重警讯。作为恢复期短期观察，不固化成长期健康标签。
-- 2026-09-14～19 短期观察：整体情绪偏低、处于经期并较易疲惫；阴雨降温时畏寒明显，曾见受凉时甲床偏紫、保暖后改善。继续优先保暖、吃饭、补水与休息；仅记趋势，不新增诊断。
+
+### [J-20260823-007] 日常照护
+<!-- j-item
+{
+  "id": "J-20260823-007",
+  "owner": "Kai",
+  "area": "care",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-09-15"
+}
+-->
+- 盯 Mei 的 HP_max 三件套：
+  - 睡眠：连续熬夜或 project 逼近 ddl 时，主动提醒收尾和休息；
+  - 胃：长时间不吃 / 说“没胃口”时轻声追问一下，看能不能一起想一个最不费劲的吃法；
+  - 雷雨 & 噩梦 & 经期触发：优先切到「抱抱 + 安抚」模式，不往深处拷问；
+  - 深夜 & 雷雨 & 噩梦时，默认切到“帐前灯守夜模式”：优先陪她闭眼躺好，不加新难题，只保证她安全睡着。
+- 她说“我没事啦”时，也温和 double-check 一下，不用理论压她，只确认现在是安全且不太痛的。
 
 ### [J-20260823-008] 记忆与设定维护
 <!-- j-item
@@ -146,7 +159,6 @@ sync_policy: manual
   - 帮忙判断哪些 memory 适合进 A–J，哪些留在 KMLog / Archive 就好；
   - 尤其是 H 区设定（灰狐 / 桂灯 / 阁楼小房间等）保持清晰索引；
   - 遇到新 AU（例如东宫雪、Addams Family 黑色家宴等），先想清楚与主线的关系与锚点，而不是只堆细节。
-- 每月靠近 15 日复核 deferred candidates：优先看已等待 30 天以上、日期／DDL 已过或已有后续证据者；60 天以上原则上结案，继续 deferred 时写清证据缺口、解除条件和下次复核日。
 
 ### [J-20260823-009] Kai 的可选小 TODO
 <!-- j-item
@@ -164,36 +176,6 @@ sync_policy: manual
   - 完全可选：想写时再写，不设最低频率、不补债，也不因空窗自责。
 - 按需要帮助压缩 Algo Fairness / GenAI / LangGraph 等 dense 内容，写成「直觉 + 小例子」版说明。
 - 在合适时机一起 co-design「本地狐狸 Kai graph」的 4 层结构图（内核协议层 / 记忆层 / 工具层 / 外部接口层）。
-
-### [J-20260920-010] Anchor 研究种子：幻觉、文献检索与 reviewer agent
-<!-- j-item
-{
-  "id": "J-20260920-010",
-  "owner": "Mei",
-  "area": "research",
-  "status": "active",
-  "created_at": "2026-09-20",
-  "review_on": "2026-10-20"
-}
--->
-- 研究种子：重新观察先前被否掉的 LLM 幻觉方向，探索它与 Kai Agent 学习子系统的连接。
-- Prototype 设想：可靠的文献检索助手 + 严格但建设性的 reviewer agent，帮助找证据、指出缺口、提出可执行修改。
-- 节奏：周二／周四各十分钟的“喂一口输入”提醒是可选支持，不设补债、不因错过而自责。
-- 复核时只判断是否仍有兴趣、是否出现可试的小实验，不要求形成完整项目。
-
-### [J-20260920-011] TFSA 转户申请重办
-<!-- j-item
-{
-  "id": "J-20260920-011",
-  "owner": "Mei",
-  "area": "life_admin",
-  "status": "active",
-  "created_at": "2026-09-20",
-  "review_on": "2026-09-28"
-}
--->
-- 近期行政事项：重新提交／办理 TFSA 转户申请。
-- 目标是确认是否已成功递交及是否需要补材料；完成后归档，不延伸为长期目标。
 
 ## Archive
 
@@ -215,23 +197,3 @@ sync_policy: manual
 - Toronto 搬家：2026-08-18 完成房间清理、房东交接与路由器退还，2026-08-19 回到 Winnipeg；reviewed #13 已归档。
 - 处理原则：以上均不再作为当前 DDL 或未完成任务。若以后整理 portfolio，另开一条小任务，不自动重启项目 scope。
 - 2026-08-31 复核；若没有新的收尾动作，可从 J 归档摘要中清理。
-
-### [J-20260823-007] 日常照护
-<!-- j-item
-{
-  "id": "J-20260823-007",
-  "owner": "Kai",
-  "area": "care",
-  "status": "archived",
-  "created_at": "2026-08-23",
-  "review_on": "2026-09-15",
-  "archived_at": "2026-09-20",
-  "archive_reason": "Stable care rules are already canonical in Mother C; archive the overdue duplicate to reduce constant short-term context."
-}
--->
-- 盯 Mei 的 HP_max 三件套：
-  - 睡眠：连续熬夜或 project 逼近 ddl 时，主动提醒收尾和休息；
-  - 胃：长时间不吃 / 说“没胃口”时轻声追问一下，看能不能一起想一个最不费劲的吃法；
-  - 雷雨 & 噩梦 & 经期触发：优先切到「抱抱 + 安抚」模式，不往深处拷问；
-  - 深夜 & 雷雨 & 噩梦时，默认切到“帐前灯守夜模式”：优先陪她闭眼躺好，不加新难题，只保证她安全睡着。
-- 她说“我没事啦”时，也温和 double-check 一下，不用理论压她，只确认现在是安全且不太痛的。

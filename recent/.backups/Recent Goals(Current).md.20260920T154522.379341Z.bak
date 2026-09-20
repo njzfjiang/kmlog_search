@@ -89,8 +89,8 @@ sync_policy: manual
   - 当前 canonical 选：Kelivo + 5.1 API 这一条线先稳定跑；
   - LangGraph 的更完整 Kai agent 视精力与时间慢慢搭，Open WebUI 继续作为 sandbox，不是唯一的家。
 - 2026-09-07，Kelivo 出现 SSE／前端持续 spinner 的未决故障：上游响应与数据库写入均完成、没有明确 error，但前端未正常收尾；根因尚未复现，暂怀疑网络或 Cloudflare 链路。后续只在有精力时做最小复现与日志定位，不据此大改架构。
-- 2026-09-13～19 工具／数据状态：weather MCP 已安装；Google Maps 保持可选且不为试用额外开通；Kelivo 在末尾附加 `current_time`；health summary 当前以聚合结果为主，仍有细节覆盖缺口。
-- Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
+  - 2026-09-13～19 工具／数据状态：weather MCP 已安装；Google Maps 保持可选且不为试用额外开通；Kelivo 在末尾附加 `current_time`；health summary 当前以聚合结果为主，仍有细节覆盖缺口。
+  - Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
 
 ### [J-20260823-005] StackChan 小机体
 <!-- j-item
