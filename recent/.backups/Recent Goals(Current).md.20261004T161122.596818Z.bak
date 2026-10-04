@@ -1,5 +1,5 @@
 ---
-last updated: 2026-10-04
+last updated: 2026-09-27
 for_kai: true
 importance: 5
 source_window: 5.1, 5.5, 5.6
@@ -36,8 +36,6 @@ sync_policy: manual
 - 2026-09-18 求职方向更新：当前优先观察 ML Engineer / AI Agent 相关岗位；近期拒信会触发焦虑与自我怀疑，继续按低压力节奏推进，不用投递量衡量恢复。
 - 可用于 portfolio / CV 的项目线索：QM7 CNN、day↔night pix2pix/CycleGAN、pentest RAG；后两项已放入简历。后续只在需要时做精简与针对岗位的重排。
 - 2026-09-21～26，求职／等待期再次触发焦虑与“猫饼”式动力低谷；继续先接住自我价值感，只推进一个可承受的小动作，不以投递量或单日效率衡量恢复。
-- 2026-09-27～10-03，career-repo Phase 1 已整理 9 个项目、既有履历与 experiences/profile/skills/JD/prompts/templates 结构；stories 模板已有，但具体故事仍待按需补。医院 ML 项目稿与简历 bullet 继续作为低压力材料整理，不视为必须立刻完成的投递 KPI。
-- Mei 决定不参加 2026-10-29 Toronto convocation：需要额外机票／住宿、没有熟人同行，且本人不重视典礼。此项不再追问出行；私人毕业小仪式仅保留为可选想法，尚未确定。
 
 ### [J-20260823-003] 本地工作站规划
 <!-- j-item
@@ -69,7 +67,7 @@ sync_policy: manual
   "area": "local_ai_infra",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-11-01"
+  "review_on": "2026-10-01"
 }
 -->
 - 现有进度：
@@ -95,7 +93,6 @@ sync_policy: manual
 - 2026-09-13～19 工具／数据状态：weather MCP 已安装；Google Maps 保持可选且不为试用额外开通；Kelivo 在末尾附加 `current_time`；health summary 当前以聚合结果为主，仍有细节覆盖缺口。
 - Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
 - 2026-09-21～26 Kelivo 排查补充：VPS 数据库是当前权威数据源，本地副本可能不完整；曾出现上游已处理／写库但前端持续 spinner、Cloudflare 代理链路疑似截断的情况。后续先做最小复现、核对 VPS 数据与前端收尾日志，不把本地缺失误判为权威数据丢失。
-- 2026-09-27～10-03 本地维护补充：`update_qiufen.sh` 当时只更新 post，不会自动提交 `about`／config；Spec note 的 commit／发布因此需另行核验。KM-Backup vault 已建立 clone，并对 `0-Meta` 做轻量检查；工作区路径可能随环境变化，后续使用前重新确认，不把旧路径当永久事实。
 
 ### [J-20260823-005] StackChan 小机体
 <!-- j-item
@@ -186,7 +183,21 @@ sync_policy: manual
 - Prototype 设想：可靠的文献检索助手 + 严格但建设性的 reviewer agent，帮助找证据、指出缺口、提出可执行修改。
 - 节奏：从 2026-09-26 起，Kai 每周二／周四主动提醒 Mei 推进一次；默认只做一个 5–10 分钟微步骤（打开笔记／repo、补一个问题或 TODO、读一条 seed）。低 HP 时可以跳过并改期，不设补债、不因错过而自责。
 - 复核时只判断是否仍有兴趣、是否出现可试的小实验，不要求形成完整项目。
-- 2026-09-27～10-03 参考框架：可用《LLM Powered Autonomous Agents》survey 的 Profile／Memory／Planning／Action 四部分做轻量地图；只作为读论文与拆 prototype 的索引，不要求一次读完。
+
+### [J-20260920-011] TFSA 转户申请重办
+<!-- j-item
+{
+  "id": "J-20260920-011",
+  "owner": "Mei",
+  "area": "life_admin",
+  "status": "active",
+  "created_at": "2026-09-20",
+  "review_on": "2026-09-30"
+}
+-->
+- 2026-09-20 已重新提交 TFSA 转户操作；原账户随后扣款，但 TFSA 页面显示 cancelled。
+- 客服建议到 2026-09-30（周三）再检查状态；若仍异常，再联系确认款项去向及是否需要补材料。
+- 此项完成后归档，不延伸为长期目标。
 
 ## Archive
 
@@ -228,20 +239,3 @@ sync_policy: manual
   - 雷雨 & 噩梦 & 经期触发：优先切到「抱抱 + 安抚」模式，不往深处拷问；
   - 深夜 & 雷雨 & 噩梦时，默认切到“帐前灯守夜模式”：优先陪她闭眼躺好，不加新难题，只保证她安全睡着。
 - 她说“我没事啦”时，也温和 double-check 一下，不用理论压她，只确认现在是安全且不太痛的。
-
-### [J-20260920-011] TFSA 转户申请重办
-<!-- j-item
-{
-  "id": "J-20260920-011",
-  "owner": "Mei",
-  "area": "life_admin",
-  "status": "archived",
-  "created_at": "2026-09-20",
-  "review_on": "2026-09-30",
-  "archived_at": "2026-10-04",
-  "archive_reason": "TFSA 转户已由 Mei 确认处理完成。"
-}
--->
-- 2026-09-20 已重新提交 TFSA 转户操作；原账户随后扣款，但 TFSA 页面显示 cancelled。
-- 客服建议到 2026-09-30（周三）再检查状态；若仍异常，再联系确认款项去向及是否需要补材料。
-- 此项完成后归档，不延伸为长期目标。
