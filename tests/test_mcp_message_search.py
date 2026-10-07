@@ -12,13 +12,19 @@ def test_primary_mcp_search_requests_evidence_by_default(monkeypatch):
 
     monkeypatch.setattr(server, "_call_api", fake_call)
     asyncio.run(server.search_kmlog(
-        "FISTA", evidence_terms=["optimization"], candidate_limit=80
+        "FISTA",
+        evidence_terms=["optimization"],
+        candidate_limit=80,
+        exclude_conversation_ids=["test-conversation"],
     ))
 
     assert captured["endpoint"] == "/search"
     assert captured["payload"]["include_evidence"] is True
     assert captured["payload"]["evidence_terms"] == ["optimization"]
     assert captured["payload"]["candidate_limit"] == 80
+    assert captured["payload"]["exclude_conversation_ids"] == [
+        "test-conversation"
+    ]
 
 
 def test_legacy_mcp_search_requests_evidence_by_default(monkeypatch):
@@ -29,11 +35,20 @@ def test_legacy_mcp_search_requests_evidence_by_default(monkeypatch):
         return {"results": []}
 
     monkeypatch.setattr(mcp_search_supabase, "_post", fake_post)
-    asyncio.run(mcp_search_supabase.search_logs("FISTA", candidate_limit=60))
+    asyncio.run(
+        mcp_search_supabase.search_logs(
+            "FISTA",
+            candidate_limit=60,
+            exclude_conversation_ids=["test-conversation"],
+        )
+    )
 
     assert captured["path"] == "/search"
     assert captured["payload"]["include_evidence"] is True
     assert captured["payload"]["candidate_limit"] == 60
+    assert captured["payload"]["exclude_conversation_ids"] == [
+        "test-conversation"
+    ]
 
 
 def test_complete_message_tools_use_numeric_result_id(monkeypatch):

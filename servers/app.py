@@ -272,6 +272,7 @@ class SearchReq(BaseModel):
     evidence_terms: Optional[List[str]] = None
     candidate_limit: Optional[int] = None
     include_candidate_results: bool = False
+    exclude_conversation_ids: Optional[List[str]] = None
 
 
 class SearchByDateReq(BaseModel):
@@ -509,6 +510,24 @@ def api_ensure_indexes(x_api_key: Optional[str] = Header(default=None)):
 @app.post("/search")
 def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
     auth(x_api_key)
+    exclude_conversation_ids = list(
+        dict.fromkeys(
+            str(value).strip()
+            for value in (req.exclude_conversation_ids or [])
+            if str(value).strip()
+        )
+    )
+    if exclude_conversation_ids and SEARCH_BACKEND != "sqlite":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "UNSUPPORTED_SEARCH_FILTER",
+                "field": "exclude_conversation_ids",
+                "message": (
+                    "exclude_conversation_ids currently requires the SQLite backend"
+                ),
+            },
+        )
     if req.include_evidence and SEARCH_BACKEND == "sqlite":
         from importlib import import_module
         backend = import_module(search_messages.__module__)
@@ -520,6 +539,7 @@ def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
             evidence_terms=req.evidence_terms,
             candidate_limit=req.candidate_limit,
             include_candidate_results=req.include_candidate_results,
+            exclude_conversation_ids=exclude_conversation_ids,
         )
         return {"query": req.query, "mode": req.mode, "kinds": req.kinds,
                 "after": req.after, "before": req.before, **result}
@@ -530,6 +550,7 @@ def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
         kinds=req.kinds,
         after=req.after,
         before=req.before,
+        exclude_conversation_ids=exclude_conversation_ids,
     )
     # rows: (id, timestamp, role, content_preview, conversation_title, relevance, match_type)
     return {
@@ -538,6 +559,8 @@ def api_search(req: SearchReq, x_api_key: Optional[str] = Header(default=None)):
         "kinds": req.kinds,
         "after": req.after,
         "before": req.before,
+        "excluded_conversation_ids": exclude_conversation_ids,
+        "excluded_conversation_id_count": len(exclude_conversation_ids),
         "results": [
             {
                 "id": r[0],

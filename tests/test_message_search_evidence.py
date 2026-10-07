@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from servers.message_search import _excerpts, _terms, search_with_evidence
 from servers import app as app_module
+from servers import search_sqlite
 
 
 def test_single_cjk_query_is_preserved():
@@ -98,6 +99,94 @@ def test_candidate_results_are_opt_in(tmp_path):
     )
 
     assert "candidate_results" not in result
+
+
+def test_excluded_conversations_are_filtered_before_candidate_limit(tmp_path):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE messages (id INTEGER, timestamp TEXT, role TEXT, content TEXT, "
+        "conversation_title TEXT, conversation_id TEXT, kind TEXT)"
+    )
+    rows = [
+        (1, "2026-01-01", "assistant", "needle kept one", "", "prod", "chat"),
+        (2, "2026-01-02", "assistant", "needle kept two", "", "prod", "chat"),
+        (10, "2026-02-01", "user", "needle test one", "", "test", "chat"),
+        (11, "2026-02-02", "assistant", "needle test two", "", "test", "chat"),
+        (12, "2026-02-03", "assistant", "needle test three", "", "test", "chat"),
+    ]
+    conn.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    captured = {}
+
+    def legacy(query, **kwargs):
+        captured.update(query=query, **kwargs)
+        return [], {}
+
+    result = search_with_evidence(
+        "needle",
+        legacy_search=legacy,
+        connection_factory=lambda: sqlite3.connect(path),
+        limit=2,
+        candidate_limit=2,
+        exclude_conversation_ids=["test", "test", ""],
+    )
+
+    assert captured["exclude_conversation_ids"] == ["test"]
+    assert result["candidate_ids"] == [2, 1]
+    assert result["selected_ids"] == [2, 1]
+    assert result["excluded_conversation_ids"] == ["test"]
+    assert result["excluded_conversation_id_count"] == 1
+    assert result["excluded_message_count"] == 3
+    assert all(item["conversation_id"] == "prod" for item in result["results"])
+
+
+def test_sqlite_search_excludes_conversations_before_limit(tmp_path, monkeypatch):
+    path = tmp_path / "messages.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE messages (
+          id INTEGER PRIMARY KEY,
+          timestamp TEXT,
+          role TEXT,
+          content TEXT,
+          conversation_title TEXT,
+          conversation_id TEXT,
+          kind TEXT
+        );
+        CREATE VIRTUAL TABLE messages_fts USING fts5(
+          content,
+          conversation_title,
+          content=messages,
+          content_rowid=id
+        );
+        """
+    )
+    conn.executemany(
+        "INSERT INTO messages VALUES (?, ?, 'assistant', ?, '', ?, 'chat')",
+        [
+            (1, "2026-01-01", "needle production", "prod"),
+            (2, "2026-02-01", "needle test", "test"),
+        ],
+    )
+    conn.execute("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        search_sqlite,
+        "get_connection",
+        lambda: sqlite3.connect(path),
+    )
+
+    rows, _ = search_sqlite.search_messages(
+        "needle",
+        limit=1,
+        exclude_conversation_ids=["test"],
+    )
+
+    assert [row[0] for row in rows] == [1]
 
 
 def test_identical_bodies_are_grouped_with_provenance(tmp_path):

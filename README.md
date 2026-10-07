@@ -495,7 +495,8 @@ POST /ensure_indexes
   "include_evidence": true,
   "evidence_terms": ["specific entity"],
   "candidate_limit": 80,
-  "include_candidate_results": false
+  "include_candidate_results": false,
+  "exclude_conversation_ids": ["manual-validation-conversation"]
 }
 ```
 
@@ -510,6 +511,14 @@ source occurrence. The response also includes `candidate_ids` and `selected_ids`
 for retrieval diagnostics. With the SQLite API backend, both MCP search wrappers request
 this mode by default. Use the numeric result `id` with `GET /messages/{id}` or the MCP tool
 `get_kmlog_message` when the complete, untruncated message is needed.
+
+`exclude_conversation_ids` is an optional SQLite-backend filter applied before
+phrase/token candidate limits and before the evidence body pool is truncated.
+It is intended for caller-owned test, shadow, or validation scopes; KMLog does
+not hard-code conversation names. Evidence responses report the normalized
+IDs, `excluded_conversation_id_count`, and the number of matching messages
+removed as `excluded_message_count`. A non-SQLite backend rejects this filter
+explicitly instead of silently ignoring it.
 
 `include_candidate_results=true` is intended for bounded evaluation and
 reranking experiments. It adds the deduplicated candidate pool, including

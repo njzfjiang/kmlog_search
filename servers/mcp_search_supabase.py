@@ -146,6 +146,7 @@ async def search_logs(
     include_evidence: bool = True,
     evidence_terms: Optional[List[str]] = None,
     candidate_limit: Optional[int] = None,
+    exclude_conversation_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Keyword search over Supabase messages (hybrid FTS + trigram).
@@ -162,6 +163,8 @@ async def search_logs(
         payload["evidence_terms"] = evidence_terms
     if candidate_limit is not None:
         payload["candidate_limit"] = candidate_limit
+    if exclude_conversation_ids:
+        payload["exclude_conversation_ids"] = exclude_conversation_ids
     return await _post("/search", payload)
 
 

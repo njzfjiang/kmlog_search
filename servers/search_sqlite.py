@@ -2458,6 +2458,7 @@ def _search_messages_single(
     kinds: list[str] | None = None,
     after: str | None = None,
     before: str | None = None,
+    exclude_conversation_ids: list[str] | None = None,
 ):
     query_raw = (query or "").strip()
     if not query_raw:
@@ -2467,6 +2468,20 @@ def _search_messages_single(
     if not kinds:
         kinds = ["chat"]
     kinds_placeholders = ",".join(["?"] * len(kinds))
+    excluded = list(
+        dict.fromkeys(
+            str(value).strip()
+            for value in (exclude_conversation_ids or [])
+            if str(value).strip()
+        )
+    )
+    exclude_clause = ""
+    if excluded:
+        exclude_placeholders = ",".join(["?"] * len(excluded))
+        exclude_clause = (
+            "AND (messages.conversation_id IS NULL "
+            f"OR messages.conversation_id NOT IN ({exclude_placeholders}))"
+        )
 
     query_compact = re.sub(r"\s+", "", query_raw)
     like_query = f"%{query_raw}%"
@@ -2517,6 +2532,7 @@ WHERE
   messages.kind IN ({kinds_placeholders})
   AND (? IS NULL OR messages.timestamp >= ?)
   AND (? IS NULL OR messages.timestamp <= ?)
+  {exclude_clause}
   AND (
        fts_hits.rowid IS NOT NULL
     OR messages.content LIKE ?
@@ -2538,6 +2554,7 @@ LIMIT ?;""", (
             after,
             before,
             before,
+            *excluded,
             like_query,
             like_query,
             like_query_compact,
@@ -2556,6 +2573,7 @@ def _search_messages_tokens(
     kinds: list[str] | None = None,
     after: str | None = None,
     before: str | None = None,
+    exclude_conversation_ids: list[str] | None = None,
 ):
     tokens = split_tokens_for_fallback(query)
     if len(tokens) <= 1:
@@ -2573,6 +2591,7 @@ def _search_messages_tokens(
             kinds=kinds,
             after=after,
             before=before,
+            exclude_conversation_ids=exclude_conversation_ids,
         )
         for row in rows:
             message_pk = row[0]
@@ -2599,6 +2618,7 @@ def search_messages(
     kinds: list[str] | None = None,
     after: str | None = None,
     before: str | None = None,
+    exclude_conversation_ids: list[str] | None = None,
 ):
     query = (query or "").strip()
     if not query:
@@ -2615,6 +2635,7 @@ def search_messages(
             kinds=kinds,
             after=after,
             before=before,
+            exclude_conversation_ids=exclude_conversation_ids,
         )
         if ranked:
             return ranked, hit_count
@@ -2625,6 +2646,7 @@ def search_messages(
                 kinds=kinds,
                 after=after,
                 before=before,
+                exclude_conversation_ids=exclude_conversation_ids,
             ),
             tokens,
             limit,
@@ -2636,6 +2658,7 @@ def search_messages(
         kinds=kinds,
         after=after,
         before=before,
+        exclude_conversation_ids=exclude_conversation_ids,
     )
     if base:
         return _rank_rows_by_token_hits(base, tokens, limit)
@@ -2646,6 +2669,7 @@ def search_messages(
         kinds=kinds,
         after=after,
         before=before,
+        exclude_conversation_ids=exclude_conversation_ids,
     )
 
 

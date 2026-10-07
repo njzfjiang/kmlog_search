@@ -132,6 +132,7 @@ async def search_kmlog(
     include_evidence: bool = True,
     evidence_terms: Optional[List[str]] = None,
     candidate_limit: Optional[int] = None,
+    exclude_conversation_ids: Optional[List[str]] = None,
 ) -> dict:
     """
     搜索 KMLog 消息内容（全文搜索）
@@ -146,6 +147,7 @@ async def search_kmlog(
         include_evidence: 是否返回完整正文上的命中证据窗口，默认开启
         evidence_terms: 可选，额外需要定位的正文关键词
         candidate_limit: 可选，重排和去重前的候选池大小，范围 1-200
+        exclude_conversation_ids: 可选，在召回和 top-k 前排除的 conversation ID
     """
     payload = {
         "query": query,
@@ -163,6 +165,8 @@ async def search_kmlog(
         payload["evidence_terms"] = evidence_terms
     if candidate_limit is not None:
         payload["candidate_limit"] = candidate_limit
+    if exclude_conversation_ids:
+        payload["exclude_conversation_ids"] = exclude_conversation_ids
     result = await _call_api("/search", payload)
     return result
 

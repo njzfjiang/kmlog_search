@@ -53,12 +53,17 @@ def _excerpts(content, spans):
 def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
                          mode="auto", kinds=None, after=None, before=None,
                          evidence_terms=None, candidate_limit=None,
-                         include_candidate_results=False):
+                         include_candidate_results=False,
+                         exclude_conversation_ids=None):
     limit = max(1, min(int(limit), 50))
     if candidate_limit is None:
         candidate_limit = max(40, limit * 4)
     candidate_limit = max(limit, min(int(candidate_limit), 200))
     terms = _terms(query, evidence_terms)
+    excluded = list(dict.fromkeys(
+        str(value).strip() for value in (exclude_conversation_ids or [])
+        if str(value).strip()
+    ))
     if not query.strip():
         response = {
             "results": [],
@@ -69,21 +74,64 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
             "candidate_count": 0,
             "selected_count": 0,
             "deduplicated_count": 0,
+            "excluded_conversation_ids": excluded,
+            "excluded_conversation_id_count": len(excluded),
+            "excluded_message_count": 0,
         }
         if include_candidate_results:
             response["candidate_results"] = []
         return response
-    legacy_rows, _ = legacy_search(query, limit=candidate_limit, mode=mode,
-                                  kinds=kinds, after=after, before=before)
+    legacy_kwargs = {
+        "limit": candidate_limit,
+        "mode": mode,
+        "kinds": kinds,
+        "after": after,
+        "before": before,
+    }
+    if excluded:
+        legacy_kwargs["exclude_conversation_ids"] = excluded
+    legacy_rows, _ = legacy_search(query, **legacy_kwargs)
     legacy = {row[0]: row for row in legacy_rows}
     kinds = [kind for kind in (kinds or ["chat"]) if kind] or ["chat"]
     where = "kind IN (" + ",".join("?" for _ in kinds) + ")"
     where += " AND (? IS NULL OR timestamp >= ?) AND (? IS NULL OR timestamp <= ?)"
     filters = [*kinds, after, after, before, before]
+    if excluded:
+        placeholders = ",".join("?" for _ in excluded)
+        where += (
+            " AND (conversation_id IS NULL "
+            f"OR conversation_id NOT IN ({placeholders}))"
+        )
+        filters.extend(excluded)
     columns = "id, timestamp, role, content, conversation_title"
+    if excluded:
+        columns += ", conversation_id"
     conn = connection_factory()
     pool = {}
+    excluded_message_count = 0
     try:
+        if excluded and terms:
+            excluded_placeholders = ",".join("?" for _ in excluded)
+            lexical_clauses = []
+            lexical_params = []
+            for term in terms:
+                escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                lexical_clauses.extend(
+                    ["content LIKE ? ESCAPE '\\'", "conversation_title LIKE ? ESCAPE '\\'"]
+                )
+                lexical_params.extend([f"%{escaped}%", f"%{escaped}%"])
+            count_sql = (
+                "SELECT count(DISTINCT id) FROM messages WHERE "
+                "kind IN (" + ",".join("?" for _ in kinds) + ") "
+                "AND (? IS NULL OR timestamp >= ?) "
+                "AND (? IS NULL OR timestamp <= ?) "
+                f"AND conversation_id IN ({excluded_placeholders}) "
+                "AND (" + " OR ".join(lexical_clauses) + ")"
+            )
+            excluded_message_count = int(conn.execute(
+                count_sql,
+                [*kinds, after, after, before, before, *excluded, *lexical_params],
+            ).fetchone()[0])
         if legacy:
             placeholders = ",".join("?" for _ in legacy)
             for row in conn.execute(f"SELECT {columns} FROM messages WHERE id IN ({placeholders})", list(legacy)):
@@ -100,7 +148,8 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
         conn.close()
     results = []
     for row in pool.values():
-        message_id, timestamp, role, content, title = row
+        message_id, timestamp, role, content, title = row[:5]
+        conversation_id = row[5] if excluded else None
         content, title = content or "", title or ""
         spans = []
         body_terms, title_terms = [], []
@@ -131,6 +180,8 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
             "match_type": "content" if body_terms else (old[6] if old else "title"),
             "token_hits": len(body_terms), "evidence_version": 1,
         })
+        if excluded:
+            results[-1]["conversation_id"] = conversation_id
     results.sort(
         key=lambda r: (
             bool(r["body_matched_terms"]),
@@ -154,6 +205,8 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
             "role": result["role"],
             "conversation_title": result["conversation_title"],
         }
+        if "conversation_id" in result:
+            provenance["conversation_id"] = result["conversation_id"]
         group = by_hash.get(result["content_hash"]) if result["content_length"] else None
         if group is None:
             result["source_message_ids"] = [result["id"]]
@@ -177,6 +230,9 @@ def search_with_evidence(query, *, legacy_search, connection_factory, limit=10,
         "candidate_count": len(candidates),
         "selected_count": len(selected),
         "deduplicated_count": len(candidates) - len(grouped),
+        "excluded_conversation_ids": excluded,
+        "excluded_conversation_id_count": len(excluded),
+        "excluded_message_count": excluded_message_count,
     }
     if include_candidate_results:
         response["candidate_results"] = grouped
