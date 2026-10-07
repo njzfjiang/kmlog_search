@@ -21,3 +21,4 @@ chatGPT-*/
 !.env.example
 .venv/
 **/.venv/
+.tmp/
