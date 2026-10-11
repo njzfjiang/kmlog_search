@@ -32,10 +32,12 @@ def _matches(text, term):
 def _excerpts(content, spans):
     # Terms arrive in planner priority order. Select before sorting by offset,
     # so optional early mentions cannot displace the required entity window.
+    # Keep enough forward context for answer-bearing Markdown list items; 240
+    # characters could stop immediately after a lead-in such as "evidence:".
     windows = []
     for priority, span in enumerate(spans[:3]):
         start = max(0, span["start"] - 60)
-        end = min(len(content), max(start + 240, span["end"]))
+        end = min(len(content), max(start + 360, span["end"]))
         windows.append({"start": start, "end": end, "priority": priority})
     merged = []
     for window in sorted(windows, key=lambda w: w["start"]):

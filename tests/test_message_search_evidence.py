@@ -18,7 +18,29 @@ def test_overlapping_excerpt_windows_are_merged():
     spans = [{"start": 100, "end": 120}, {"start": 112, "end": 120},
              {"start": 300, "end": 320}]
     excerpts = _excerpts(content, spans)
-    assert excerpts == [{"start": 40, "end": 480, "text": content[40:480]}]
+    assert excerpts == [{"start": 40, "end": 600, "text": content[40:600]}]
+
+
+def test_excerpt_keeps_markdown_details_after_evidence_lead_in():
+    prefix = "x" * 60
+    content = (
+        prefix
+        + "唐雁止看到药方，觉得某几味药特别怪：\n"
+        + "  - 名字偏西域 / 楼兰风\n"
+        + "  - 配伍方式很像为了维持某种精神状态而设计的\n"
+        + "她可能翻出旧案里类似配方。\n"
+        + "y" * 400
+    )
+    start = content.index("唐雁止")
+
+    excerpts = _excerpts(
+        content,
+        [{"start": start, "end": start + len("唐雁止")}],
+    )
+
+    assert "名字偏西域 / 楼兰风" in excerpts[0]["text"]
+    assert "配伍方式很像为了维持某种精神状态而设计的" in excerpts[0]["text"]
+    assert "她可能翻出旧案里类似配方" in excerpts[0]["text"]
 
 
 def test_excerpt_selection_preserves_term_priority_and_offsets():
