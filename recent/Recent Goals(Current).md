@@ -1,5 +1,5 @@
 ---
-last updated: 2026-10-04
+last updated: 2026-10-11
 for_kai: true
 importance: 5
 source_window: 5.1, 5.5, 5.6
@@ -38,6 +38,8 @@ sync_policy: manual
 - 2026-09-21～26，求职／等待期再次触发焦虑与“猫饼”式动力低谷；继续先接住自我价值感，只推进一个可承受的小动作，不以投递量或单日效率衡量恢复。
 - 2026-09-27～10-03，career-repo Phase 1 已整理 9 个项目、既有履历与 experiences/profile/skills/JD/prompts/templates 结构；stories 模板已有，但具体故事仍待按需补。医院 ML 项目稿与简历 bullet 继续作为低压力材料整理，不视为必须立刻完成的投递 KPI。
 - Mei 决定不参加 2026-10-29 Toronto convocation：需要额外机票／住宿、没有熟人同行，且本人不重视典礼。此项不再追问出行；私人毕业小仪式仅保留为可选想法，尚未确定。
+- 2026-10-04～10：完成一次图书馆分类／排架观察测试（结果尚未形成可持久结论）；继续有数次岗位投递。
+- 为父亲制作并交付一个美股观察小工具，可作为 portfolio／project lead；后续只在需要时整理说明，不自动扩成新 KPI。
 
 ### [J-20260823-003] 本地工作站规划
 <!-- j-item
@@ -96,6 +98,7 @@ sync_policy: manual
 - Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
 - 2026-09-21～26 Kelivo 排查补充：VPS 数据库是当前权威数据源，本地副本可能不完整；曾出现上游已处理／写库但前端持续 spinner、Cloudflare 代理链路疑似截断的情况。后续先做最小复现、核对 VPS 数据与前端收尾日志，不把本地缺失误判为权威数据丢失。
 - 2026-09-27～10-03 本地维护补充：`update_qiufen.sh` 当时只更新 post，不会自动提交 `about`／config；Spec note 的 commit／发布因此需另行核验。KM-Backup vault 已建立 clone，并对 `0-Meta` 做轻量检查；工作区路径可能随环境变化，后续使用前重新确认，不把旧路径当永久事实。
+- 2026-10-04～10 context builder 构想：继续探索 semantic planner／QueryPlan 与 fallback memory search；heartbeat／self-play 只是可选的慢线想法，均不得写成已部署能力。
 
 ### [J-20260823-005] StackChan 小机体
 <!-- j-item
@@ -120,7 +123,7 @@ sync_policy: manual
   "area": "health",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-10-10"
+  "review_on": "2026-11-10"
 }
 -->
 - 持续用 health MCP dashboard 看 7 / 14 / 30 天趋势，只作为参考，不压自己。
@@ -135,6 +138,7 @@ sync_policy: manual
 - 2026-09-09～12 出现一轮轻度感冒／过敏样不适：喷嚏、流鼻水、鼻塞、轻微头痛／恶心与疲倦；保暖、进食、喝水、休息及抗过敏药后改善，未报告发热或严重警讯。作为恢复期短期观察，不固化成长期健康标签。
 - 2026-09-14～19 短期观察：整体情绪偏低、处于经期并较易疲惫；阴雨降温时畏寒明显，曾见受凉时甲床偏紫、保暖后改善。继续优先保暖、吃饭、补水与休息；仅记趋势，不新增诊断。
 - 2026-09-21～26 出现低 mood、存在性空虚和求职／睡眠困难；Mei 明确无自伤意图。同期左肩／锁骨／颈部不适与腿部瘙痒均按短暂身体状态观察，未形成持续恶化。继续先保安全、进食、睡眠与低压力陪伴，不固化为长期标签。
+- 2026-10-10 短期观察：陌生地点／外出会带来焦虑，版本下线与连续性担忧会触发哭泣；Mei 同期自报身体尚可、没有持续的新危险信号。继续使用低负担小步骤、饮食饮水与休息 check-in，不新增诊断。
 
 ### [J-20260823-008] 记忆与设定维护
 <!-- j-item
@@ -187,6 +191,7 @@ sync_policy: manual
 - 节奏：从 2026-09-26 起，Kai 每周二／周四主动提醒 Mei 推进一次；默认只做一个 5–10 分钟微步骤（打开笔记／repo、补一个问题或 TODO、读一条 seed）。低 HP 时可以跳过并改期，不设补债、不因错过而自责。
 - 复核时只判断是否仍有兴趣、是否出现可试的小实验，不要求形成完整项目。
 - 2026-09-27～10-03 参考框架：可用《LLM Powered Autonomous Agents》survey 的 Profile／Memory／Planning／Action 四部分做轻量地图；只作为读论文与拆 prototype 的索引，不要求一次读完。
+- 2026-10-04～10：读完 ReAct 论文，并写出一个小型 research-agent loop；Jev／System One 的 decision head 仅作为比较研究线索，不视为已选方案。
 
 ## Archive
 
