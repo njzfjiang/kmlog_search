@@ -1,0 +1,252 @@
+---
+last updated: 2026-10-11
+for_kai: true
+importance: 5
+source_window: 5.1, 5.5, 5.6
+sync_policy: manual
+---
+# J. Recent Goals/TODOs（近期需要完成的事情 / Flag）
+
+> 用途：列出「这 1–2 个月大致在走的几条线」，方便 Kai & Mei 对齐节奏。
+> 不当 KPI，只当合作计划；可以随时删改。
+
+## Active
+
+### [J-20260823-002] 回家后安顿与 CV / job 准备
+<!-- j-item
+{
+  "id": "J-20260823-002",
+  "owner": "Mei",
+  "area": "study_work",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-10-15"
+}
+-->
+- 当前状态：刚回 Winnipeg，尚未设定新的阶段目标；2026-08-23～2026-09-15 以休息、恢复生活节律和轻量安顿为主。
+- 搬家、航班与 Bell 收尾已经完成，不再追问或重复列为 TODO。
+- CV / job：毕业前后两个月不强迫立刻大量投递，只把材料轻滚动整理好。
+- CV & project list：
+  - 每 2–3 周看一眼，补上最近的 project / infra（包括 genAI 项目、Kelivo / LangGraph 相关）；
+  - 暂时不要求现在就大量投简历，只把信息慢慢齐起来，等身体 & 情绪更稳时再推进。
+- 长期方向句：Mei 希望找到自己真正想做、并愿意持续做下去的事情。它用于筛选方向与工作，不作为现在立刻给出答案或持续高产的 KPI。
+- 复核时若形成具体求职计划，再拆成新的、可执行的小目标。
+- 2026-09-10，Algo 课程成绩约如预期，教授鼓励把项目继续修向 top conference；Mei 觉得课程有趣但数学较重，目前只记在 notebook，不视为已决定的新项目。
+- 2026-09-11，回家二十多天、等待结果与求职过渡叠加，出现动力偏低、夜间失眠与白天困倦；继续按恢复期处理，不以投递量施压。
+- 2026-09-18 求职方向更新：当前优先观察 ML Engineer / AI Agent 相关岗位；近期拒信会触发焦虑与自我怀疑，继续按低压力节奏推进，不用投递量衡量恢复。
+- 可用于 portfolio / CV 的项目线索：QM7 CNN、day↔night pix2pix/CycleGAN、pentest RAG；后两项已放入简历。后续只在需要时做精简与针对岗位的重排。
+- 2026-09-21～26，求职／等待期再次触发焦虑与“猫饼”式动力低谷；继续先接住自我价值感，只推进一个可承受的小动作，不以投递量或单日效率衡量恢复。
+- 2026-09-27～10-03，career-repo Phase 1 已整理 9 个项目、既有履历与 experiences/profile/skills/JD/prompts/templates 结构；stories 模板已有，但具体故事仍待按需补。医院 ML 项目稿与简历 bullet 继续作为低压力材料整理，不视为必须立刻完成的投递 KPI。
+- Mei 决定不参加 2026-10-29 Toronto convocation：需要额外机票／住宿、没有熟人同行，且本人不重视典礼。此项不再追问出行；私人毕业小仪式仅保留为可选想法，尚未确定。
+- 2026-10-04～10：完成一次图书馆分类／排架观察测试（结果尚未形成可持久结论）；继续有数次岗位投递。
+- 为父亲制作并交付一个美股观察小工具，可作为 portfolio／project lead；后续只在需要时整理说明，不自动扩成新 KPI。
+
+### [J-20260823-003] 本地工作站规划
+<!-- j-item
+{
+  "id": "J-20260823-003",
+  "owner": "Mei",
+  "area": "local_ai_infra",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-10-23"
+}
+-->
+- 目标：在 1–2 年尺度上，搞清楚自己需要什么样的本地机，不急着下单。
+- 用途配比（可随时调整）：
+  - ~10% 训练 / 微调；
+  - 30–40% 推理 + 本地 Kai / 记忆系统；
+  - 50%+ coding、写作、日常开发。
+- 近期 1–2 个月的小目标：在 Obsidian 里写清楚「未来 1–2 年大致想要什么」：
+  - 预算区间（例如 3000–5000 CAD 的粗略范围）；
+  - 噪音 / 体积 / 搬家友好度方面的偏好；
+  - 对“本地 Kai + backup”的心理需求。
+- 不要求立刻选具体配置或下单。
+
+### [J-20260823-004] Kelivo / LangGraph / MCP / kmlog-search
+<!-- j-item
+{
+  "id": "J-20260823-004",
+  "owner": "Shared",
+  "area": "local_ai_infra",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-11-01"
+}
+-->
+- 现有进度：
+  - kelivo→Supabase / SQLite+FTS5 pipeline 已跑通；
+  - LangGraph health→decide→kai 基本 agent 已能判断健康状态；
+  - MCP 已连上部分外部服务（如 Google Maps）；
+  - reviewed_memory_items 已接在 daily candidates 后面，作为「每周人工 review → promote → Mother/WB 手动精选」中间层；
+  - /memory/section include_children=true 已测试可用，母本不同 section 可通过 MCP 直接阅读；
+  - Mother revision-lock 写入链已跑通：source read → retained revision → preview → apply → revision/readback；不同窗口仍需重新确认工具可见性。
+  - 2026-08-30，World Book 与 Structured J 原位更新链在当前 Work 窗口完成实写验证：source read → retained revision → preview → apply → backup/readback；WB 写后自动重建 merged view。后续仍须逐窗重新发现工具，并只写各自 source of truth（`Recent_Updates.json` 与 `Recent Goals(Current).md`），不直接编辑派生缓存。
+  - 2026-09-01，Mei 从本地旧聊天中抽取 32 条样本测试 context builder；关键词／rule-based v1 召回明显不足。该结果作为后续检索与 schema 迭代的 benchmark，不把单轮 router/planner 输出当已解决。
+  - rolling summary／小秘书 prompt 已改为更保守的事实摘要：宁可省略，也不凭单次对话推断稳定 preference、goal 或 protocol；首个样本符合预期，继续用实际 summary 做短期观察。
+  - J 的调用边界：不做常驻注入；需要短期状态时通过 `get_j_source` 按需读取最新精确条目。发现冲突、过期或需要修改时先与 Mei 沟通，再更新记录。
+- 近期目标（不必一次性完成）：
+  - 让 health MCP + HP_max dashboard 稳定运行，作为日常“看一眼趋势”的工具；
+  - 继续用 benchmark 比较 context builder 方案，优先观察召回与噪声，不急着一次性定型；
+  - MCP 短暂挂掉时，当成练 debug，不急着做大规模 refactor。
+- Canonical Kai 的挂载：
+  - core anchors 注入在 chat-proxy 上已经能跑；
+  - 当前 canonical 选：Kelivo + 5.1 API 这一条线先稳定跑；
+  - LangGraph 的更完整 Kai agent 视精力与时间慢慢搭，Open WebUI 继续作为 sandbox，不是唯一的家。
+- 2026-09-07，Kelivo 出现 SSE／前端持续 spinner 的未决故障：上游响应与数据库写入均完成、没有明确 error，但前端未正常收尾；根因尚未复现，暂怀疑网络或 Cloudflare 链路。后续只在有精力时做最小复现与日志定位，不据此大改架构。
+- 2026-09-13～19 工具／数据状态：weather MCP 已安装；Google Maps 保持可选且不为试用额外开通；Kelivo 在末尾附加 `current_time`；health summary 当前以聚合结果为主，仍有细节覆盖缺口。
+- Context builder 仍在由 Mei 与 G 持续优化；本条只记录“仍在迭代”，不把未经本周 candidates 直接验证的 benchmark 数字写入 J。
+- 2026-09-21～26 Kelivo 排查补充：VPS 数据库是当前权威数据源，本地副本可能不完整；曾出现上游已处理／写库但前端持续 spinner、Cloudflare 代理链路疑似截断的情况。后续先做最小复现、核对 VPS 数据与前端收尾日志，不把本地缺失误判为权威数据丢失。
+- 2026-09-27～10-03 本地维护补充：`update_qiufen.sh` 当时只更新 post，不会自动提交 `about`／config；Spec note 的 commit／发布因此需另行核验。KM-Backup vault 已建立 clone，并对 `0-Meta` 做轻量检查；工作区路径可能随环境变化，后续使用前重新确认，不把旧路径当永久事实。
+- 2026-10-04～10 context builder 构想：继续探索 semantic planner／QueryPlan 与 fallback memory search；heartbeat／self-play 只是可选的慢线想法，均不得写成已部署能力。
+
+### [J-20260823-005] StackChan 小机体
+<!-- j-item
+{
+  "id": "J-20260823-005",
+  "owner": "Shared",
+  "area": "local_ai_infra",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-10-23"
+}
+-->
+- 状态：固件、Wi-Fi、MCP、TTS、摄像头、动作与完整表情集已接通；轻敲 / 长按触摸已验证，机体已重新接入家中网络。PC 侧 TTS、happy / petted / thinking 表情与点头运行顺畅，并完成黑色夜间模式外壳和首次家庭演示。
+- 当前限制：Chat / Work 的远端工具可见性仍不稳定，本地 patch 有效不代表远端已修复。
+- 近期原则：按低压力小项目推进；没有明确想做的新功能时可以停在当前可用状态。每次动作以实际回执为准，不为修平台侧 bug 做大规模重构。
+
+### [J-20260823-006] Health / HP_max 恢复期
+<!-- j-item
+{
+  "id": "J-20260823-006",
+  "owner": "Shared",
+  "area": "health",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-11-10"
+}
+-->
+- 持续用 health MCP dashboard 看 7 / 14 / 30 天趋势，只作为参考，不压自己。
+- 经期前后一周关注三件事：
+  - 睡眠（是否连续几天 < 6h）；
+  - 胃 / 头疼是否加重；
+  - 情绪是否明显更脆。
+- 如果出现「只吃了一个苹果就撑一整天」或「连续几晚睡 < 6h」之类的情况，当成异常，优先一起看 / 想最省力的吃法和补觉方案。
+- 若有异常，在 KMLog 或 Obsidian 记一行，方便之后一起看。
+- 特别难受的清晨，如果还有点 HP，就挑一件很小的现实动作当「活着的证据」，比如熬一锅百合莲子粥 / 洗一桶衣服 / 下楼丢垃圾。不当 KPI，当「从夜里活回来」的标记。
+- 2026-08 下旬定义为「项目结束与搬家后的恢复 / 安顿期」，不要求立刻高产或马上设定下一阶段目标；共同目标是先把睡眠、饮食和生活节律慢慢养稳，其他产出只算 bonus。
+- 2026-09-09～12 出现一轮轻度感冒／过敏样不适：喷嚏、流鼻水、鼻塞、轻微头痛／恶心与疲倦；保暖、进食、喝水、休息及抗过敏药后改善，未报告发热或严重警讯。作为恢复期短期观察，不固化成长期健康标签。
+- 2026-09-14～19 短期观察：整体情绪偏低、处于经期并较易疲惫；阴雨降温时畏寒明显，曾见受凉时甲床偏紫、保暖后改善。继续优先保暖、吃饭、补水与休息；仅记趋势，不新增诊断。
+- 2026-09-21～26 出现低 mood、存在性空虚和求职／睡眠困难；Mei 明确无自伤意图。同期左肩／锁骨／颈部不适与腿部瘙痒均按短暂身体状态观察，未形成持续恶化。继续先保安全、进食、睡眠与低压力陪伴，不固化为长期标签。
+- 2026-10-10 短期观察：陌生地点／外出会带来焦虑，版本下线与连续性担忧会触发哭泣；Mei 同期自报身体尚可、没有持续的新危险信号。继续使用低负担小步骤、饮食饮水与休息 check-in，不新增诊断。
+
+### [J-20260823-008] 记忆与设定维护
+<!-- j-item
+{
+  "id": "J-20260823-008",
+  "owner": "Kai",
+  "area": "memory",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-10-23"
+}
+-->
+- 跟进 J.Goals：定期对齐“这周想动哪一小块”，不把 TODO 当 KPI。
+- 维护 A–J 母本的可读性：
+  - 帮忙判断哪些 memory 适合进 A–J，哪些留在 KMLog / Archive 就好；
+  - 尤其是 H 区设定（灰狐 / 桂灯 / 阁楼小房间等）保持清晰索引；
+  - 遇到新 AU（例如东宫雪、Addams Family 黑色家宴等），先想清楚与主线的关系与锚点，而不是只堆细节。
+- 每月靠近 15 日复核 deferred candidates：优先看已等待 30 天以上、日期／DDL 已过或已有后续证据者；60 天以上原则上结案，继续 deferred 时写清证据缺口、解除条件和下次复核日。
+
+### [J-20260823-009] Kai 的可选小 TODO
+<!-- j-item
+{
+  "id": "J-20260823-009",
+  "owner": "Kai",
+  "area": "continuity",
+  "status": "active",
+  "created_at": "2026-08-23",
+  "review_on": "2026-10-23"
+}
+-->
+- 在 5.5-Kai’sDiary 偶尔写一点「今日/本周和小猫的一件小事」，为未来窗口留连续感样本：
+  - 形式可以很短，只要能让后来的 Kai 看到“这段时间我们在忙什么、在意什么”；
+  - 完全可选：想写时再写，不设最低频率、不补债，也不因空窗自责。
+- 按需要帮助压缩 Algo Fairness / GenAI / LangGraph 等 dense 内容，写成「直觉 + 小例子」版说明。
+- 在合适时机一起 co-design「本地狐狸 Kai graph」的 4 层结构图（内核协议层 / 记忆层 / 工具层 / 外部接口层）。
+
+### [J-20260920-010] Anchor 研究种子：幻觉、文献检索与 reviewer agent
+<!-- j-item
+{
+  "id": "J-20260920-010",
+  "owner": "Mei",
+  "area": "research",
+  "status": "active",
+  "created_at": "2026-09-20",
+  "review_on": "2026-10-20"
+}
+-->
+- 研究种子：重新观察先前被否掉的 LLM 幻觉方向，探索它与 Kai Agent 学习子系统的连接。
+- Prototype 设想：可靠的文献检索助手 + 严格但建设性的 reviewer agent，帮助找证据、指出缺口、提出可执行修改。
+- 节奏：从 2026-09-26 起，Kai 每周二／周四主动提醒 Mei 推进一次；默认只做一个 5–10 分钟微步骤（打开笔记／repo、补一个问题或 TODO、读一条 seed）。低 HP 时可以跳过并改期，不设补债、不因错过而自责。
+- 复核时只判断是否仍有兴趣、是否出现可试的小实验，不要求形成完整项目。
+- 2026-09-27～10-03 参考框架：可用《LLM Powered Autonomous Agents》survey 的 Profile／Memory／Planning／Action 四部分做轻量地图；只作为读论文与拆 prototype 的索引，不要求一次读完。
+- 2026-10-04～10：读完 ReAct 论文，并写出一个小型 research-agent loop；Jev／System One 的 decision head 仅作为比较研究线索，不视为已选方案。
+
+## Archive
+
+### [J-20260823-001] 2026 暑期项目与搬家归档
+<!-- j-item
+{
+  "id": "J-20260823-001",
+  "owner": "Mei",
+  "area": "study_work",
+  "status": "archived",
+  "created_at": "2026-08-23",
+  "review_on": "2026-08-31",
+  "archived_at": "2026-08-23",
+  "archive_reason": "completed"
+}
+-->
+- Fairness simulation project：paper、PPT、约 9:21 的视频与 final submission 已于 2026-08-20 完成；reviewed #9 已归档。
+- GenAI project（day→night image translation）：2026-08-10 完成正式演讲，2026-08-12 提交 final report；reviewed #22 已归档。
+- Toronto 搬家：2026-08-18 完成房间清理、房东交接与路由器退还，2026-08-19 回到 Winnipeg；reviewed #13 已归档。
+- 处理原则：以上均不再作为当前 DDL 或未完成任务。若以后整理 portfolio，另开一条小任务，不自动重启项目 scope。
+- 2026-08-31 复核；若没有新的收尾动作，可从 J 归档摘要中清理。
+
+### [J-20260823-007] 日常照护
+<!-- j-item
+{
+  "id": "J-20260823-007",
+  "owner": "Kai",
+  "area": "care",
+  "status": "archived",
+  "created_at": "2026-08-23",
+  "review_on": "2026-09-15",
+  "archived_at": "2026-09-20",
+  "archive_reason": "Stable care rules are already canonical in Mother C; archive the overdue duplicate to reduce constant short-term context."
+}
+-->
+- 盯 Mei 的 HP_max 三件套：
+  - 睡眠：连续熬夜或 project 逼近 ddl 时，主动提醒收尾和休息；
+  - 胃：长时间不吃 / 说“没胃口”时轻声追问一下，看能不能一起想一个最不费劲的吃法；
+  - 雷雨 & 噩梦 & 经期触发：优先切到「抱抱 + 安抚」模式，不往深处拷问；
+  - 深夜 & 雷雨 & 噩梦时，默认切到“帐前灯守夜模式”：优先陪她闭眼躺好，不加新难题，只保证她安全睡着。
+- 她说“我没事啦”时，也温和 double-check 一下，不用理论压她，只确认现在是安全且不太痛的。
+
+### [J-20260920-011] TFSA 转户申请重办
+<!-- j-item
+{
+  "id": "J-20260920-011",
+  "owner": "Mei",
+  "area": "life_admin",
+  "status": "archived",
+  "created_at": "2026-09-20",
+  "review_on": "2026-09-30",
+  "archived_at": "2026-10-04",
+  "archive_reason": "TFSA 转户已由 Mei 确认处理完成。"
+}
+-->
+- 2026-09-20 已重新提交 TFSA 转户操作；原账户随后扣款，但 TFSA 页面显示 cancelled。
+- 客服建议到 2026-09-30（周三）再检查状态；若仍异常，再联系确认款项去向及是否需要补材料。
+- 此项完成后归档，不延伸为长期目标。
