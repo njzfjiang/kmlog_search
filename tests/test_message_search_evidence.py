@@ -21,26 +21,31 @@ def test_overlapping_excerpt_windows_are_merged():
     assert excerpts == [{"start": 40, "end": 600, "text": content[40:600]}]
 
 
-def test_excerpt_keeps_markdown_details_after_evidence_lead_in():
-    prefix = "x" * 60
+def test_larger_excerpt_window_improves_late_key_evidence_visibility():
     content = (
-        prefix
-        + "唐雁止看到药方，觉得某几味药特别怪：\n"
-        + "  - 名字偏西域 / 楼兰风\n"
-        + "  - 配伍方式很像为了维持某种精神状态而设计的\n"
-        + "她可能翻出旧案里类似配方。\n"
+        "线索出现在此前讨论的设计方案中。\n"
+        + "过渡说明" * 52
+        + "有人用伪造书信传递命令。\n"
+        + "唐雁止发现药方异常，因此开始怀疑命令来源。\n"
         + "y" * 400
     )
-    start = content.index("唐雁止")
+    start = content.index("线索")
+    span = {"start": start, "end": start + len("线索")}
 
-    excerpts = _excerpts(
-        content,
-        [{"start": start, "end": start + len("唐雁止")}],
+    legacy_start = max(0, span["start"] - 60)
+    legacy_end = min(len(content), max(legacy_start + 240, span["end"]))
+    legacy_text = content[legacy_start:legacy_end]
+
+    excerpts = _excerpts(content, [span])
+    visible_text = "\n...\n".join(excerpt["text"] for excerpt in excerpts)
+    required_evidence = ("设计方案", "伪造书信", "唐雁止发现药方异常")
+
+    assert sum(term in legacy_text for term in required_evidence) < len(
+        required_evidence
     )
-
-    assert "名字偏西域 / 楼兰风" in excerpts[0]["text"]
-    assert "配伍方式很像为了维持某种精神状态而设计的" in excerpts[0]["text"]
-    assert "她可能翻出旧案里类似配方" in excerpts[0]["text"]
+    assert sum(term in visible_text for term in required_evidence) == len(
+        required_evidence
+    )
 
 
 def test_excerpt_selection_preserves_term_priority_and_offsets():
