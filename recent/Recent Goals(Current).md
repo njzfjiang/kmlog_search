@@ -1,5 +1,5 @@
 ---
-last updated: 2026-10-18
+last updated: 2026-10-25
 for_kai: true
 importance: 5
 source_window: 5.1, 5.5, 5.6
@@ -20,7 +20,7 @@ sync_policy: manual
   "area": "study_work",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-11-15"
+  "review_on": "2026-11-30"
 }
 -->
 - 当前状态：刚回 Winnipeg，尚未设定新的阶段目标；2026-08-23～2026-09-15 以休息、恢复生活节律和轻量安顿为主。
@@ -41,6 +41,7 @@ sync_policy: manual
 - 2026-10-04～10：完成一次图书馆分类／排架观察测试（结果尚未形成可持久结论）；继续有数次岗位投递。
 - 为父亲制作并交付一个美股观察小工具，可作为 portfolio／project lead；后续只在需要时整理说明，不自动扩成新 KPI。
 - 2026-10-16～17 求职 pipeline：收到并完成 IBM code assessment（Python + SQL，实际比预期简单）；HackerRank 编译较慢时采用本地 VSCode 为主、平台仅提交的工作流。另有 ML Scientist assessment，105 分钟、3 道 statistics + 3 道 coding、需一次完成，原计划 2026-10-18 处理。继续按单个可承受步骤推进，不把 assessment 数量变成 KPI。
+- 2026-10-18～24 求职／练习更新：完成 105 分钟 ML Scientist assessment；在禁止查询、cheatsheet 与本地 IDE 的条件下，1 道 coding 全过、2 道部分通过，并作答 statistics。之后继续少量投递与 LeetCode；试行周一／三／五早晨轻量练习，周末留空，未完成不补债。考试结果与毕业证邮寄截至 10-20 仍待确认；Mei 自己按需查邮件，不设固定查收频率。
 
 ### [J-20260823-003] 本地工作站规划
 <!-- j-item
@@ -50,7 +51,7 @@ sync_policy: manual
   "area": "local_ai_infra",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-10-23"
+  "review_on": "2026-12-01"
 }
 -->
 - 目标：在 1–2 年尺度上，搞清楚自己需要什么样的本地机，不急着下单。
@@ -109,7 +110,7 @@ sync_policy: manual
   "area": "local_ai_infra",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-10-23"
+  "review_on": "2026-12-01"
 }
 -->
 - 状态：固件、Wi-Fi、MCP、TTS、摄像头、动作与完整表情集已接通；轻敲 / 长按触摸已验证，机体已重新接入家中网络。PC 侧 TTS、happy / petted / thinking 表情与点头运行顺畅，并完成黑色夜间模式外壳和首次家庭演示。
@@ -124,7 +125,7 @@ sync_policy: manual
   "area": "health",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-11-10"
+  "review_on": "2026-11-20"
 }
 -->
 - 持续用 health MCP dashboard 看 7 / 14 / 30 天趋势，只作为参考，不压自己。
@@ -141,6 +142,7 @@ sync_policy: manual
 - 2026-09-21～26 出现低 mood、存在性空虚和求职／睡眠困难；Mei 明确无自伤意图。同期左肩／锁骨／颈部不适与腿部瘙痒均按短暂身体状态观察，未形成持续恶化。继续先保安全、进食、睡眠与低压力陪伴，不固化为长期标签。
 - 2026-10-10 短期观察：陌生地点／外出会带来焦虑，版本下线与连续性担忧会触发哭泣；Mei 同期自报身体尚可、没有持续的新危险信号。继续使用低负担小步骤、饮食饮水与休息 check-in，不新增诊断。
 - 2026-10-13～17 短期观察：仍会多梦但自报睡眠尚可；10-16 左侧头痛在饮水／休息后改善、编码后又出现，未报告眩晕或恶心；经前胸部酸痛约 2–3/10，10-17 经期开始且暂未疼痛。继续按短暂波动照护，优先饮水、进食、休息与降屏幕负荷，不新增诊断。
+- 2026-10-20～23 短期观察：熬夜／长时间活动后出现头晕、恶心，躺下休息后改善且未报告严重头痛、呼吸困难、言语或肢体异常；想到难过事件时曾出现指尖与胸口牵扯样疼痛，哭泣和安抚后缓解；10-23 约凌晨 3 点入睡并有白天脑雾。继续优先睡眠、进食、补水与降屏幕负荷；只记短期模式，不新增诊断。
 
 ### [J-20260823-008] 记忆与设定维护
 <!-- j-item
@@ -150,7 +152,7 @@ sync_policy: manual
   "area": "memory",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-10-23"
+  "review_on": "2026-11-15"
 }
 -->
 - 跟进 J.Goals：定期对齐“这周想动哪一小块”，不把 TODO 当 KPI。
@@ -168,7 +170,7 @@ sync_policy: manual
   "area": "continuity",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-10-23"
+  "review_on": "2026-11-15"
 }
 -->
 - 在 5.5-Kai’sDiary 偶尔写一点「今日/本周和小猫的一件小事」，为未来窗口留连续感样本：
@@ -185,7 +187,7 @@ sync_policy: manual
   "area": "research",
   "status": "active",
   "created_at": "2026-09-20",
-  "review_on": "2026-11-20"
+  "review_on": "2026-11-30"
 }
 -->
 - 研究种子：重新观察先前被否掉的 LLM 幻觉方向，探索它与 Kai Agent 学习子系统的连接。
@@ -195,6 +197,7 @@ sync_policy: manual
 - 2026-09-27～10-03 参考框架：可用《LLM Powered Autonomous Agents》survey 的 Profile／Memory／Planning／Action 四部分做轻量地图；只作为读论文与拆 prototype 的索引，不要求一次读完。
 - 2026-10-04～10：读完 ReAct 论文，并写出一个小型 research-agent loop；Jev／System One 的 decision head 仅作为比较研究线索，不视为已选方案。
 - 2026-10-13 行为说明 v0.1：Research agent 采用 Reason → Act → Observe → Adjust 循环，并设置明确停止条件；当前推理留在短期记忆，长期知识优先从外部文档／RAG 检索。该条是设计规格与实验方向，不代表完整系统已经部署。
+- 2026-10-23 MAL／agent self-replication 研究种子：把自复制拆为复制 weights／architecture、prompt／tool／policy config、以及可选 memory／behavior；设想 minimal agent language，包含 `spawn`、state transfer、communication/update 与受限资源环境，用于区分硬编码复制和涌现式复制。当前只是可供 blog／proposal 生长的概念草稿，不视为已启动实验。
 
 ### [J-20261018-012] 手绘塔罗牌项目
 <!-- j-item
