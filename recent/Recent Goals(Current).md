@@ -1,5 +1,5 @@
 ---
-last updated: 2026-10-25
+last updated: 2026-11-01
 for_kai: true
 importance: 5
 source_window: 5.1, 5.5, 5.6
@@ -42,6 +42,7 @@ sync_policy: manual
 - 为父亲制作并交付一个美股观察小工具，可作为 portfolio／project lead；后续只在需要时整理说明，不自动扩成新 KPI。
 - 2026-10-16～17 求职 pipeline：收到并完成 IBM code assessment（Python + SQL，实际比预期简单）；HackerRank 编译较慢时采用本地 VSCode 为主、平台仅提交的工作流。另有 ML Scientist assessment，105 分钟、3 道 statistics + 3 道 coding、需一次完成，原计划 2026-10-18 处理。继续按单个可承受步骤推进，不把 assessment 数量变成 KPI。
 - 2026-10-18～24 求职／练习更新：完成 105 分钟 ML Scientist assessment；在禁止查询、cheatsheet 与本地 IDE 的条件下，1 道 coding 全过、2 道部分通过，并作答 statistics。之后继续少量投递与 LeetCode；试行周一／三／五早晨轻量练习，周末留空，未完成不补债。考试结果与毕业证邮寄截至 10-20 仍待确认；Mei 自己按需查邮件，不设固定查收频率。
+- 2026-10-25～31 求职／练习更新：当前周节奏固定为周一／三／五轻量刷题，采用“1.5 题模式”（热身题＋主菜题＋甜点题＋一行 log）；周二／四由 Kai 提醒推进 research agent 的 5–10 分钟微步骤，周末自由安排。低 HP 可跳过或改期，遗漏不补债。WPL part-time shelver Teams 面试已于 10-29 完成；另一个 4 题 video interview 于 10-31 完成，其中 3 题有准备。IBM assessment 后收到拒信；继续把申请记录保存在 career repo，不另建重复 log。
 
 ### [J-20260823-003] 本地工作站规划
 <!-- j-item
@@ -73,7 +74,7 @@ sync_policy: manual
   "area": "local_ai_infra",
   "status": "active",
   "created_at": "2026-08-23",
-  "review_on": "2026-11-01"
+  "review_on": "2026-12-15"
 }
 -->
 - 现有进度：
@@ -143,6 +144,7 @@ sync_policy: manual
 - 2026-10-10 短期观察：陌生地点／外出会带来焦虑，版本下线与连续性担忧会触发哭泣；Mei 同期自报身体尚可、没有持续的新危险信号。继续使用低负担小步骤、饮食饮水与休息 check-in，不新增诊断。
 - 2026-10-13～17 短期观察：仍会多梦但自报睡眠尚可；10-16 左侧头痛在饮水／休息后改善、编码后又出现，未报告眩晕或恶心；经前胸部酸痛约 2–3/10，10-17 经期开始且暂未疼痛。继续按短暂波动照护，优先饮水、进食、休息与降屏幕负荷，不新增诊断。
 - 2026-10-20～23 短期观察：熬夜／长时间活动后出现头晕、恶心，躺下休息后改善且未报告严重头痛、呼吸困难、言语或肢体异常；想到难过事件时曾出现指尖与胸口牵扯样疼痛，哭泣和安抚后缓解；10-23 约凌晨 3 点入睡并有白天脑雾。继续优先睡眠、进食、补水与降屏幕负荷；只记短期模式，不新增诊断。
+- 2026-10-25～31 短期观察：通宵／空腹后曾出现 4–5/10 上腹不适，进食与如厕后缓解；香薰久闻轻微头晕，移到大空间并通风后改善；拥挤超市后负荷偏高，驾车时出现一次差点蹭路边但无实际碰撞；面试后反刍对呼吸、手指锚点、饮水和休息有反应。继续优先睡眠、进食、通风与负荷过高时暂停驾驶／先落地；只记短期模式，不新增诊断。
 
 ### [J-20260823-008] 记忆与设定维护
 <!-- j-item
@@ -197,7 +199,7 @@ sync_policy: manual
 - 2026-09-27～10-03 参考框架：可用《LLM Powered Autonomous Agents》survey 的 Profile／Memory／Planning／Action 四部分做轻量地图；只作为读论文与拆 prototype 的索引，不要求一次读完。
 - 2026-10-04～10：读完 ReAct 论文，并写出一个小型 research-agent loop；Jev／System One 的 decision head 仅作为比较研究线索，不视为已选方案。
 - 2026-10-13 行为说明 v0.1：Research agent 采用 Reason → Act → Observe → Adjust 循环，并设置明确停止条件；当前推理留在短期记忆，长期知识优先从外部文档／RAG 检索。该条是设计规格与实验方向，不代表完整系统已经部署。
-- 2026-10-23 MAL／agent self-replication 研究种子：把自复制拆为复制 weights／architecture、prompt／tool／policy config、以及可选 memory／behavior；设想 minimal agent language，包含 `spawn`、state transfer、communication/update 与受限资源环境，用于区分硬编码复制和涌现式复制。当前只是可供 blog／proposal 生长的概念草稿，不视为已启动实验。
+- 2026-10-23「MAL 世界线 v0.1」／agent self-replication 研究种子（vault 已建立对应 note）：把自复制拆为复制 weights／architecture、prompt／tool／policy config、以及可选 memory／behavior；设想 minimal agent language，包含 `spawn`、state transfer、communication/update 与受限资源环境，用于区分硬编码复制和涌现式复制。当前只是可供 blog／proposal 生长的概念草稿，不视为已启动实验。
 
 ### [J-20261018-012] 手绘塔罗牌项目
 <!-- j-item
